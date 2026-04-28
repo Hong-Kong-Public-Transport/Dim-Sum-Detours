@@ -1,0 +1,10 @@
+{
+	"id": "mix",
+	"displayName": {
+		"en": "Mix",
+		"zh": "混合"
+	},
+	"description": {
+		"en": "Combine two or more ingredients without applying heat."
+	}
+}

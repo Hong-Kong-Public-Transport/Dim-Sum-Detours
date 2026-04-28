@@ -1,0 +1,71 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.+'
+    id 'io.spring.dependency-management' version '1.+'
+}
+
+// group + version come from gradle.properties
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+ext {
+    lombokVersion       = '+'
+    fastutilVersion     = '+'
+    onebusawayVersion   = '+'
+    commonsLang3Version = '+'
+    commonsIoVersion    = '+'
+    jspecifyVersion     = '+'
+}
+
+dependencies {
+    // --- Reactive web layer ---
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
+    // --- Blocking JPA — wrap calls in Mono.fromCallable(...).subscribeOn(boundedElastic()) ---
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    runtimeOnly 'com.h2database:h2'
+
+    // --- GTFS parsing ---
+    implementation "org.onebusaway:onebusaway-gtfs:${onebusawayVersion}"
+
+    // --- High-performance primitive collections ---
+    implementation "it.unimi.dsi:fastutil:${fastutilVersion}"
+
+    // --- Apache Commons (file/path/string utilities) ---
+    implementation "org.apache.commons:commons-lang3:${commonsLang3Version}"
+    implementation "commons-io:commons-io:${commonsIoVersion}"
+
+    // --- JSpecify nullness annotations (the entire codebase is @NullMarked by default) ---
+    implementation "org.jspecify:jspecify:${jspecifyVersion}"
+
+    // --- Lombok ---
+    compileOnly       "org.projectlombok:lombok:${lombokVersion}"
+    annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+    testCompileOnly   "org.projectlombok:lombok:${lombokVersion}"
+    testAnnotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+
+    // --- JSON ---
+    implementation 'com.fasterxml.jackson.module:jackson-module-parameter-names'
+
+    // --- Tests ---
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'io.projectreactor:reactor-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs += '-parameters'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

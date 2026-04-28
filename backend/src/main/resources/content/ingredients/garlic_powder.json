@@ -1,0 +1,16 @@
+{
+	"id": "garlic_powder",
+	"displayName": {
+		"en": "Garlic Powder",
+		"zh": "è’œç²‰"
+	},
+	"category": "spice",
+	"shelfLifeMinutes": -1,
+	"refrigeratable": false,
+	"baseValue": 22,
+	"tags": [
+		"seasoning",
+		"non_perishable",
+		"intermediate"
+	]
+}

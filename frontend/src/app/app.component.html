@@ -1,0 +1,40 @@
+<div class="wrapper column" *transloco="let translate">
+	<p-toolbar styleClass="app-toolbar">
+		<ng-template pTemplate="start">
+			<div class="row center gap-small">
+				<i class="pi pi-shop" aria-hidden="true"></i>
+				<div>{{ translate("app.title") }}</div>
+			</div>
+		</ng-template>
+		<ng-template pTemplate="end">
+			<div class="row center gap-small">
+				<p-button
+					[icon]="isDarkTheme() ? 'pi pi-sun' : 'pi pi-moon'"
+					[ariaLabel]="translate('app.themeToggle')"
+					severity="secondary"
+					[text]="true"
+					[rounded]="true"
+					(onClick)="toggleTheme()"
+				/>
+				<p-select
+					[options]="languageOptions()"
+					optionLabel="label"
+					optionValue="code"
+					[ngModel]="activeLanguage()"
+					(ngModelChange)="setLanguage($event)"
+					[ariaLabel]="translate('app.languageSwitcher')"
+				>
+					<ng-template let-option pTemplate="selectedItem">
+						<span>{{ translate(option.labelKey) }}</span>
+					</ng-template>
+					<ng-template let-option pTemplate="item">
+						<span>{{ translate(option.labelKey) }}</span>
+					</ng-template>
+				</p-select>
+			</div>
+		</ng-template>
+	</p-toolbar>
+	<main class="wrapper">
+		<app-map/>
+	</main>
+</div>

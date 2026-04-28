@@ -1,0 +1,16 @@
+{
+	"id": "rice",
+	"displayName": {
+		"en": "Rice",
+		"zh": "ç™½ç±³"
+	},
+	"category": "grain",
+	"shelfLifeMinutes": -1,
+	"refrigeratable": false,
+	"baseValue": 5,
+	"tags": [
+		"staple",
+		"non_perishable",
+		"farmable"
+	]
+}

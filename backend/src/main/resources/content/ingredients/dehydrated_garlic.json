@@ -1,0 +1,16 @@
+{
+	"id": "dehydrated_garlic",
+	"displayName": {
+		"en": "Dehydrated Garlic",
+		"zh": "è„«æ°´è’œç‰‡"
+	},
+	"category": "processed",
+	"shelfLifeMinutes": -1,
+	"refrigeratable": false,
+	"baseValue": 14,
+	"tags": [
+		"aromatic",
+		"non_perishable",
+		"intermediate"
+	]
+}

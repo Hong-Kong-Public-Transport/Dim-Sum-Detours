@@ -1,0 +1,10 @@
+{
+	"id": "steam",
+	"displayName": {
+		"en": "Steam",
+		"zh": "蒸"
+	},
+	"description": {
+		"en": "Apply steam to cook food gently."
+	}
+}

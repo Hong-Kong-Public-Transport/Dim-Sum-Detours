@@ -1,0 +1,27 @@
+{
+	"id": "dehydrated_garlic",
+	"displayName": {
+		"en": "Dehydrated Garlic",
+		"zh": "è„«æ°´è’œç‰‡"
+	},
+	"inputs": [
+		{
+			"ingredientId": "garlic",
+			"quantity": 2
+		}
+	],
+	"operations": [
+		"dehydrate"
+	],
+	"outputs": [
+		{
+			"ingredientId": "dehydrated_garlic",
+			"quantity": 1
+		}
+	],
+	"minimumFactoryTier": 1,
+	"operationDurationMinutes": 60,
+	"tags": [
+		"intermediate"
+	]
+}

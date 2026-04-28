@@ -1,0 +1,16 @@
+{
+	"id": "cooked_rice",
+	"displayName": {
+		"en": "Cooked Rice",
+		"zh": "ç™½é£¯"
+	},
+	"category": "processed",
+	"shelfLifeMinutes": 720,
+	"refrigeratable": true,
+	"baseValue": 12,
+	"tags": [
+		"staple",
+		"perishable",
+		"intermediate"
+	]
+}

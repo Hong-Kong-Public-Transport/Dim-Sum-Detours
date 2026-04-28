@@ -1,0 +1,15 @@
+{
+	"id": "garlic_salt",
+	"displayName": {
+		"en": "Garlic Salt",
+		"zh": "è’œé¹½"
+	},
+	"category": "spice",
+	"shelfLifeMinutes": -1,
+	"refrigeratable": false,
+	"baseValue": 28,
+	"tags": [
+		"seasoning",
+		"non_perishable"
+	]
+}

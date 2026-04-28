@@ -1,0 +1,10 @@
+{
+	"id": "powderize",
+	"displayName": {
+		"en": "Powderize",
+		"zh": "磨粉"
+	},
+	"description": {
+		"en": "Grind into a fine powder."
+	}
+}

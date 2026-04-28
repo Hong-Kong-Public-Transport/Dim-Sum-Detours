@@ -1,0 +1,31 @@
+{
+	"id": "garlic_rice",
+	"displayName": {
+		"en": "Garlic Rice",
+		"zh": "è’œé¦™é£¯"
+	},
+	"inputs": [
+		{
+			"ingredientId": "cooked_rice",
+			"quantity": 1
+		},
+		{
+			"ingredientId": "garlic_salt",
+			"quantity": 1
+		}
+	],
+	"operations": [
+		"mix"
+	],
+	"outputs": [
+		{
+			"ingredientId": "garlic_rice",
+			"quantity": 1
+		}
+	],
+	"minimumFactoryTier": 1,
+	"operationDurationMinutes": 20,
+	"tags": [
+		"dish"
+	]
+}

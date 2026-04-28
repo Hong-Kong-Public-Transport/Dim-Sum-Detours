@@ -1,0 +1,68 @@
+<div class="wrapper row" *transloco="let translate">
+	<aside class="app-sidebar column" [attr.aria-label]="translate('sidebar.label')">
+		<div class="content column gap padding-sides padding-top-bottom">
+			<p-card styleClass="app-card">
+				<ng-template pTemplate="header">
+					<div class="row center gap-small app-card-title">
+						<i class="pi pi-apple" aria-hidden="true"></i>
+						<div>{{ translate("sidebar.ingredients") }}</div>
+					</div>
+				</ng-template>
+				<ul class="column gap-small app-list">
+					@for (ingredient of ingredientViews(); track ingredient.id) {
+						<li class="row center gap-small">
+							<span>{{ ingredient.name }}</span>
+							<span class="app-muted app-small">({{ ingredient.category }})</span>
+						</li>
+					} @empty {
+						<li class="app-muted">{{ translate("sidebar.noIngredients") }}</li>
+					}
+				</ul>
+			</p-card>
+
+			<p-card styleClass="app-card">
+				<ng-template pTemplate="header">
+					<div class="row center gap-small app-card-title">
+						<i class="pi pi-book" aria-hidden="true"></i>
+						<div>{{ translate("sidebar.recipes") }}</div>
+					</div>
+				</ng-template>
+				<ul class="column gap-small app-list">
+					@for (recipe of recipeViews(); track recipe.id) {
+						<li class="column gap-small app-recipe">
+							<strong>{{ recipe.name }}</strong>
+							<span class="app-muted app-small">{{ recipe.inputs }} → {{ recipe.outputs }}</span>
+							<span class="app-muted app-small">{{ recipe.operations }}</span>
+						</li>
+					} @empty {
+						<li class="app-muted">{{ translate("sidebar.noRecipes") }}</li>
+					}
+				</ul>
+			</p-card>
+
+			<p-card styleClass="app-card">
+				<ng-template pTemplate="header">
+					<div class="row center gap-small app-card-title">
+						<i class="pi pi-truck" aria-hidden="true"></i>
+						<div>{{ translate("sidebar.gtfsFeeds") }}</div>
+					</div>
+				</ng-template>
+				<ul class="column gap-small app-list">
+					@for (feedName of feeds(); track feedName) {
+						<li>{{ feedName }}</li>
+					} @empty {
+						<li class="app-muted">{{ translate("sidebar.noFeeds") }}</li>
+					}
+				</ul>
+			</p-card>
+		</div>
+	</aside>
+
+	<div
+		#mapElement
+		class="app-map spacing"
+		role="application"
+		[attr.aria-label]="translate('map.label')"
+	></div>
+</div>
+

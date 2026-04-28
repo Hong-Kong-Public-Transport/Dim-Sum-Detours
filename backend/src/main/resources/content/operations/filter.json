@@ -1,0 +1,10 @@
+{
+	"id": "filter",
+	"displayName": {
+		"en": "Filter",
+		"zh": "過濾"
+	},
+	"description": {
+		"en": "Filter or clarify a liquid."
+	}
+}

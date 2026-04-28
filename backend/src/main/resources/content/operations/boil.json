@@ -1,0 +1,10 @@
+{
+	"id": "boil",
+	"displayName": {
+		"en": "Boil",
+		"zh": "煲"
+	},
+	"description": {
+		"en": "Cook in vigorously boiling water."
+	}
+}

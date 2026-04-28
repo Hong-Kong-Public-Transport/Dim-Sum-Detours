@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: dimsumdetours-backend
+  datasource:
+    url: jdbc:h2:file:./data/db/dimsumdetours;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: true
+  h2:
+    console:
+      enabled: true
+
+server:
+  port: 8080
+
+dimsumdetours:
+  # Folder where players drop GTFS .zip files. Resolved relative to the working directory.
+  gtfs-dir: data/gtfs
+  # Folder containing built-in JSON content (ingredients/recipes/etc.).
+  content-dir: classpath:content
+  # Folder where player mods live (override built-in content by id).
+  mods-dir: data/mods
+  # Overpass API endpoint for OSM queries.
+  overpass-url: https://overpass-api.de/api/interpreter
+
+logging:
+  level:
+    com.dimsumdetours: DEBUG

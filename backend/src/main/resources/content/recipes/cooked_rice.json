@@ -1,0 +1,27 @@
+{
+	"id": "cooked_rice",
+	"displayName": {
+		"en": "Cooked Rice",
+		"zh": "ç™½é£¯"
+	},
+	"inputs": [
+		{
+			"ingredientId": "rice",
+			"quantity": 1
+		}
+	],
+	"operations": [
+		"steam"
+	],
+	"outputs": [
+		{
+			"ingredientId": "cooked_rice",
+			"quantity": 1
+		}
+	],
+	"minimumFactoryTier": 1,
+	"operationDurationMinutes": 45,
+	"tags": [
+		"intermediate"
+	]
+}

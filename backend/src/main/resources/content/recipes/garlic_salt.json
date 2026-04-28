@@ -1,0 +1,31 @@
+{
+	"id": "garlic_salt",
+	"displayName": {
+		"en": "Garlic Salt",
+		"zh": "è’œé¹½"
+	},
+	"inputs": [
+		{
+			"ingredientId": "garlic_powder",
+			"quantity": 1
+		},
+		{
+			"ingredientId": "salt",
+			"quantity": 2
+		}
+	],
+	"operations": [
+		"mix"
+	],
+	"outputs": [
+		{
+			"ingredientId": "garlic_salt",
+			"quantity": 3
+		}
+	],
+	"minimumFactoryTier": 1,
+	"operationDurationMinutes": 15,
+	"tags": [
+		"seasoning"
+	]
+}

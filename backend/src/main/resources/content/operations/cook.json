@@ -1,0 +1,10 @@
+{
+	"id": "cook",
+	"displayName": {
+		"en": "Cook",
+		"zh": "煮"
+	},
+	"description": {
+		"en": "Apply heat to cook food (raw → cooked)."
+	}
+}

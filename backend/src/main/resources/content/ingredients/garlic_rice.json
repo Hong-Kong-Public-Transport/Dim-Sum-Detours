@@ -1,0 +1,16 @@
+{
+	"id": "garlic_rice",
+	"displayName": {
+		"en": "Garlic Rice",
+		"zh": "è’œé¦™é£¯"
+	},
+	"category": "processed",
+	"shelfLifeMinutes": 480,
+	"refrigeratable": true,
+	"baseValue": 45,
+	"tags": [
+		"staple",
+		"perishable",
+		"dish"
+	]
+}

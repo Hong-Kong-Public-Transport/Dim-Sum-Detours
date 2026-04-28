@@ -1,0 +1,16 @@
+{
+	"id": "garlic",
+	"displayName": {
+		"en": "Garlic",
+		"zh": "è’œé ­"
+	},
+	"category": "vegetable",
+	"shelfLifeMinutes": 14400,
+	"refrigeratable": true,
+	"baseValue": 8,
+	"tags": [
+		"aromatic",
+		"perishable",
+		"farmable"
+	]
+}

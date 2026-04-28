@@ -1,0 +1,23 @@
+{
+	"app": {
+		"title": "Dim Sum Detours",
+		"languageSwitcher": "Language",
+		"themeToggle": "Toggle dark mode",
+		"lang": {
+			"en": "English",
+			"zh": "繁體中文 (香港)"
+		}
+	},
+	"sidebar": {
+		"label": "Game side panel",
+		"ingredients": "Ingredients",
+		"recipes": "Recipes",
+		"gtfsFeeds": "GTFS feeds",
+		"noIngredients": "No ingredients loaded.",
+		"noRecipes": "No recipes loaded.",
+		"noFeeds": "Drop a GTFS .zip into data/gtfs/."
+	},
+	"map": {
+		"label": "Game map"
+	}
+}

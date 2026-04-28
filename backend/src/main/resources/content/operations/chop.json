@@ -1,0 +1,10 @@
+{
+	"id": "chop",
+	"displayName": {
+		"en": "Chop",
+		"zh": "切"
+	},
+	"description": {
+		"en": "Reduce something into smaller pieces (e.g. mincing garlic)."
+	}
+}

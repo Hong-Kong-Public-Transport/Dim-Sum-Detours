@@ -1,0 +1,31 @@
+# --- OS / IDE ---
+.DS_Store
+Thumbs.db
+.idea/
+*.iml
+.vscode/
+
+# --- Java / Gradle ---
+backend/build/
+backend/.gradle/
+backend/out/
+backend/bin/
+backend/src/main/resources/static/
+*.class
+*.log
+
+# --- Node / Angular ---
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+frontend/coverage/
+npm-debug.log*
+
+# --- Game data (don't commit transit feeds or player saves) ---
+data/gtfs/*.zip
+data/gtfs/cache/
+data/mods/
+data/saves/
+
+# Keep the folder + its README
+!data/gtfs/README.md

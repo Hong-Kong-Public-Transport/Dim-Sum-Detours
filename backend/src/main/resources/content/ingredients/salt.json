@@ -1,0 +1,16 @@
+{
+	"id": "salt",
+	"displayName": {
+		"en": "Salt",
+		"zh": "é¹½"
+	},
+	"category": "spice",
+	"shelfLifeMinutes": -1,
+	"refrigeratable": false,
+	"baseValue": 3,
+	"tags": [
+		"seasoning",
+		"non_perishable",
+		"sea_harvestable"
+	]
+}

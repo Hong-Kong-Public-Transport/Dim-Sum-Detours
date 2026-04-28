@@ -1,0 +1,10 @@
+{
+	"id": "grill",
+	"displayName": {
+		"en": "Grill",
+		"zh": "燒烤"
+	},
+	"description": {
+		"en": "Apply dry heat to brown the surface of food."
+	}
+}

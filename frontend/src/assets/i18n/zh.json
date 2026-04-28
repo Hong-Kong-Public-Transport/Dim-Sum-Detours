@@ -1,0 +1,23 @@
+{
+	"app": {
+		"title": "Dim Sum Detours",
+		"languageSwitcher": "語言",
+		"themeToggle": "切換深色模式",
+		"lang": {
+			"en": "English",
+			"zh": "繁體中文 (香港)"
+		}
+	},
+	"sidebar": {
+		"label": "遊戲側邊欄",
+		"ingredients": "食材",
+		"recipes": "食譜",
+		"gtfsFeeds": "GTFS 班次資料",
+		"noIngredients": "尚未載入食材。",
+		"noRecipes": "尚未載入食譜。",
+		"noFeeds": "請將 GTFS .zip 放到 data/gtfs/ 資料夾。"
+	},
+	"map": {
+		"label": "遊戲地圖"
+	}
+}
