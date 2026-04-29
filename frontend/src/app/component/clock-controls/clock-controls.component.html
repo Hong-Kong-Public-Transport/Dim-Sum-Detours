@@ -1,0 +1,29 @@
+<div class="row center gap-small clock-controls" *transloco="let translate">
+	<div class="row center gap-small clock-time">
+		<i class="pi pi-clock" aria-hidden="true"></i>
+		<span class="clock-day">{{ translate("app.clock.day." + dayKey()) }}</span>
+		<span class="clock-hhmm">{{ timeLabel() }}</span>
+	</div>
+	<div class="row center clock-buttons">
+		<p-button
+			[icon]="snapshot().playing ? 'pi pi-pause' : 'pi pi-play'"
+			[ariaLabel]="snapshot().playing ? translate('app.clock.pause') : translate('app.clock.play')"
+			[pTooltip]="snapshot().playing ? translate('app.clock.pause') : translate('app.clock.play')"
+			tooltipPosition="bottom"
+			severity="secondary"
+			[text]="true"
+			[rounded]="true"
+			(onClick)="togglePause()"
+		/>
+		@for (speed of speeds; track speed) {
+			<p-button
+				[label]="speed + '×'"
+				[severity]="snapshot().speed === speed && snapshot().playing ? 'primary' : 'secondary'"
+				[outlined]="!(snapshot().speed === speed && snapshot().playing)"
+				size="small"
+				(onClick)="setSpeed(speed)"
+			/>
+		}
+	</div>
+</div>
+

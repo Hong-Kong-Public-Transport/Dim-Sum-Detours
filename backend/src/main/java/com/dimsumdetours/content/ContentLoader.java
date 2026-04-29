@@ -195,9 +195,11 @@ public class ContentLoader {
 				return;
 			}
 		}
-		if (recipe.inputs().isEmpty() || recipe.outputs().isEmpty()) {
-			log.warn("Recipe '{}' must have at least one input and one output; skipping.",
-				recipe.id());
+		// Outputs are mandatory: a recipe that produces nothing is meaningless. Inputs are
+		// optional — farm/harvest recipes (e.g. grow_garlic, harvest_salt) take nothing and
+		// produce a raw ingredient.
+		if (recipe.outputs().isEmpty()) {
+			log.warn("Recipe '{}' must have at least one output; skipping.", recipe.id());
 			return;
 		}
 		for (RecipeIngredient input : recipe.inputs()) {

@@ -7,8 +7,6 @@ Dim Sum Detours is a top-down 2D simulation game inspired by **Factorio**, **Tra
 real-world city by shipping ingredients along its actual public transit network — using the
 real GTFS schedule of any city you provide.
 
----
-
 ## Table of Contents
 
 1. [Game Pitch](#game-pitch)
@@ -25,8 +23,6 @@ real GTFS schedule of any city you provide.
 12. [Running the Project](#running-the-project)
 13. [Phase 1 Roadmap](#phase-1-roadmap)
 
----
-
 ## Game Pitch
 
 > **Place a farm → route its output via real transit to a factory → process it into a dish →
@@ -39,8 +35,6 @@ feed it. Each restaurant only accepts specific dishes. Public transit is your lo
 buses, trams, and trains run on the **real GTFS schedule** of the city you loaded, and you assign
 each shipment to a specific route. The main puzzle is **spatial**: where do you place farms and
 factories so the existing transit network actually serves them well?
-
----
 
 ## The Core Loop
 
@@ -86,8 +80,6 @@ Five tiers of activity, nested by time scale. A healthy session touches all of t
                                └──── (loop) ────► more money, harder demand
 ```
 
----
-
 ## Game Time Model
 
 - Game time is **its own clock**, decoupled from real time.
@@ -96,8 +88,6 @@ Five tiers of activity, nested by time scale. A healthy session touches all of t
 - **Speeds available:** Pause, 1×, 4×, 16×, 64×, 256×.
 - The clock **auto-drops to 1×** on critical alerts (a restaurant about to close, a shipment about to spoil).
 - **GTFS service exceptions** (`calendar_dates.txt`) become in-game events — holidays, special schedules, tourist surges — without needing real-time data.
-
----
 
 ## The Three Pressure Systems
 
@@ -129,8 +119,6 @@ These are the forces that prevent the game from becoming a money printer. **All 
 - Each GTFS trip has a capacity (a horse cart starts at 5 units; a modern bus carries far more).
 - NPC city demand also consumes transit capacity (simulated abstractly).
 - Pay a priority surcharge or unlock dedicated cargo runs.
-
----
 
 ## Three Progression Trees
 
@@ -166,8 +154,6 @@ Run **in parallel** so the player always has multiple goals.
 6. **Transit Tycoon** — use 10 distinct GTFS routes simultaneously. Unlocks priority cargo.
 7. **City Builder** — grow population to a target threshold. Soft win condition.
 
----
-
 ## A Typical 30-Minute Session
 
 1. **Open** — check overnight earnings and 1–2 alerts.
@@ -176,8 +162,6 @@ Run **in parallel** so the player always has multiple goals.
 4. **Build** (~10 min) — place farm, configure factory operation graph, assign GTFS routes.
 5. **Watch** (~5 min, high speed) — see it run, tweak, hit a milestone.
 6. **Close** — a partial milestone or a teased district pulls you back next time.
-
----
 
 ## Customizing the Map (GTFS + OSM)
 
@@ -201,7 +185,28 @@ Then it pulls **OSM data** (Overpass API) for that bounding box:
 
 OSM and GTFS responses are **cached locally** so you're not hammering APIs every launch.
 
----
+### Placement rules
+
+Buildings can only be placed on zones that fit their kind:
+
+| Building    | Allowed OSM zones                  |
+|-------------|------------------------------------|
+| **Farm**    | `leisure=park`, `landuse=farmland` |
+| **Factory** | `landuse=commercial`               |
+| Restaurant  | spawned automatically (Phase 6+)   |
+
+The frontend previews validity live: the cursor turns into a "no" symbol when hovering an
+invalid zone, and the **Confirm** button is disabled. The same rule will be enforced
+server-side once the OSM zone cache is moved to the backend (`INVALID_PLACEMENT_LOCATION`
+error code is already wired through the API).
+
+### GTFS `shapes.txt` is optional
+
+The GTFS spec marks `shapes.txt` as conditionally required, and many real feeds omit it.
+When a trip has no shape, we fall back to **straight-line geometry between consecutive
+`stop_times`** (in `stop_sequence` order). This is correct enough for cargo-shipment
+animation purposes — the visual artefact is the line cutting across blocks rather than
+following streets, but timing is still driven by the actual GTFS schedule.
 
 ## Where to put GTFS zip files
 
@@ -226,8 +231,6 @@ Recommended starter feeds:
 - **TfL (London)**, **MTA (NYC)**, **Toei (Tokyo)** for variety later.
 
 > **Note:** the `data/gtfs/` folder is git-ignored. Don't commit transit feeds.
-
----
 
 ## Modding via JSON
 
@@ -277,8 +280,6 @@ in `data/mods/`, get translations for free, no separate i18n bundle required:
 - UI chrome (buttons, headings, error messages) lives in `frontend/src/assets/i18n/<lang>.json`,
   *not* in content JSON. That's app code, not data.
 
----
-
 ## Tech Stack
 
 ### Locked in
@@ -309,8 +310,6 @@ in `data/mods/`, get translations for free, no separate i18n bundle required:
 - **R2DBC** — more idiomatic for WebFlux, but you wanted JPA. We use JPA wrapped in
   `Mono.fromCallable(...).subscribeOn(Schedulers.boundedElastic())` — a well-known pattern.
 - **Java backend + Unity frontend over HTTP** — latency-prohibitive for a tick-based sim.
-
----
 
 ## Project Structure
 
@@ -356,10 +355,16 @@ Dim Sum Detours/
         │   ├── app.config.ts
         │   ├── app.routes.ts
         │   ├── app.component.ts
+        │   ├── component/
+        │   │   ├── clock-controls/         (toolbar clock + speed buttons)
+        │   │   ├── map/                    (Leaflet map + sidebar)
+        │   │   └── panel/                  (icon + title card — reused everywhere)
         │   ├── core/
-        │   │   ├── constants/game.constants.ts ← all UI tunables in ONE place
-        │   │   └── services/                   (GameService, ContentService)
-        │   ├── features/map/                   (MapComponent — Leaflet)
+        │   │   ├── constant/game.constants.ts ← all UI tunables in ONE place
+        │   │   ├── i18n/                   (locale resolution helpers)
+        │   │   ├── model/                  (Building, Recipe, GeoJSON, …)
+        │   │   ├── service/                (GameService, ContentService, …)
+        │   │   └── utility/                (formatMoney, placement-validator, …)
         │   └── transloco-loader.ts
         ├── assets/i18n/
         │   ├── en.json
@@ -369,8 +374,6 @@ Dim Sum Detours/
 
 > The `sim/` package contains **zero Spring imports**. This is intentional — if we ever port to
 > Unity (C#), it's a near-mechanical translation. Treat it as the most valuable code in the repo.
-
----
 
 ## Running the Project
 
@@ -401,25 +404,22 @@ npm start
 
 Frontend serves at `http://localhost:4200` and proxies `/api` to the backend.
 
----
-
 ## Phase 1 Roadmap
 
 | Week | Goal                                                                                                                                                                                  |     Status     |
 |------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:--------------:|
 | 1    | Spring Boot project, GTFS upload + parse, persist to H2. Recipe + ingredient JSON content with referential validation. Categories, operations, ingredients, recipes all JSON-defined. |       ✅        |
-| 2    | OSM Overpass client + endpoint. Angular + Leaflet map showing the GTFS bounding box, parks, water, commercial zones.                                                                  | 🚧 in progress |
-| 3    | Place a farm, place a factory, hardcoded recipe. Money counter.                                                                                                                       |       ⬜        |
-| 4    | Game clock + speed controls. Spawn a shipment that animates along a GTFS trip.                                                                                                        |       ⬜        |
-| 5    | Factory operation graph UI (drag/drop) using JSON-defined operations.                                                                                                                 |       ⬜        |
-| 6    | Restaurant + patience timer + first end-to-end delivery. **"Is it fun?" checkpoint.**                                                                                                 |       ⬜        |
+| 2    | OSM Overpass client + endpoint. Angular + Leaflet map showing the GTFS bounding box, parks, water, commercial zones.                                                                  |       ✅        |
+| 3    | Place a farm, place a factory, hardcoded recipe. Money counter.                                                                                                                       |       ✅        |
+| 4    | Game clock + speed controls. Spawn a shipment that animates along a GTFS trip.                                                                                                        |       ✅        |
+| 5    | Factory operation graph UI (drag/drop) using JSON-defined operations.                                                                                                                 |       ✅        |
+| 6    | Restaurant + patience timer + first end-to-end delivery. **"Is it fun?" checkpoint.**                                                                                                 | 🚧 in progress |
 | 7+   | Spoilage, reputation, second restaurant, milestones 1–3.                                                                                                                              |       ⬜        |
 
 **Don't build** trees, ingredient walking, modding UI, or visual polish until Week 6 proves the loop works.
 
----
-
 ## Documentation
 
+- [`docs/CODE_STYLES.md`](docs/CODE_STYLES.md) — naming, formatting, and architecture rules
 - [`docs/INGREDIENTS.md`](docs/INGREDIENTS.md) — full ingredient catalogue + JSON schema
 - [`docs/RECIPES.md`](docs/RECIPES.md) — full recipe catalogue + JSON schema

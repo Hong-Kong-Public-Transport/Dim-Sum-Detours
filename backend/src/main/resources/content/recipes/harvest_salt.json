@@ -1,0 +1,24 @@
+{
+	"id": "harvest_salt",
+	"displayName": {
+		"en": "Harvest Salt",
+		"zh": "採鹽"
+	},
+	"inputs": [],
+	"operations": [
+		"harvest"
+	],
+	"outputs": [
+		{
+			"ingredientId": "salt",
+			"quantity": 1
+		}
+	],
+	"minimumFactoryTier": 1,
+	"operationDurationMinutes": 45,
+	"tags": [
+		"farm",
+		"raw"
+	]
+}
+

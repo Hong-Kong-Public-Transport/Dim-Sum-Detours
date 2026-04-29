@@ -1,0 +1,25 @@
+.clock-controls {
+	font-variant-numeric: tabular-nums;
+}
+
+.clock-time {
+	min-width: 6.5rem;
+	font-size: 0.95rem;
+	font-weight: 500;
+}
+
+.clock-day {
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	font-size: 0.75rem;
+	color: var(--p-text-muted-color, var(--light-color));
+}
+
+.clock-hhmm {
+	font-feature-settings: "tnum";
+}
+
+.clock-buttons {
+	gap: 0.15rem;
+}
+

@@ -3,9 +3,23 @@
 		"title": "Dim Sum Detours",
 		"languageSwitcher": "Language",
 		"themeToggle": "Toggle dark mode",
-		"lang": {
-			"en": "English",
-			"zh": "繁體中文 (香港)"
+		"balance": "Balance",
+		"reset": "Reset game",
+		"resetConfirm": "Wipe your wallet, all placed buildings, and start over?",
+		"resetAccept": "Yes, reset",
+		"resetCancel": "Keep playing",
+		"clock": {
+			"pause": "Pause",
+			"play": "Resume",
+			"day": {
+				"mon": "Mon",
+				"tue": "Tue",
+				"wed": "Wed",
+				"thu": "Thu",
+				"fri": "Fri",
+				"sat": "Sat",
+				"sun": "Sun"
+			}
 		}
 	},
 	"sidebar": {
@@ -13,11 +27,55 @@
 		"ingredients": "Ingredients",
 		"recipes": "Recipes",
 		"gtfsFeeds": "GTFS feeds",
+		"selectFeed": "Select a feed",
+		"loadingZones": "Loading placement zones…",
+		"legend": "Legend",
+		"legendParks": "Parks (community gardens)",
+		"legendFarmland": "Farmland",
+		"legendWater": "Water",
+		"legendCommercial": "Commercial",
 		"noIngredients": "No ingredients loaded.",
 		"noRecipes": "No recipes loaded.",
-		"noFeeds": "Drop a GTFS .zip into data/gtfs/."
+		"noFeeds": "Drop a GTFS .zip into data/gtfs/.",
+		"build": {
+			"title": "Build",
+			"placeFarm": "Place farm",
+			"placeFactory": "Place factory",
+			"clickHint": "Click on the map to place.",
+			"zonesHint": {
+				"FARM": "Farms can only go on parks or farmland.",
+				"FACTORY": "Factories can only go in commercial zones."
+			},
+			"pickRecipe": "Pick a recipe",
+			"confirm": "Confirm",
+			"cancel": "Cancel",
+			"errors": {
+				"INSUFFICIENT_FUNDS": "Not enough money.",
+				"UNKNOWN_RECIPE": "That recipe doesn't exist.",
+				"RECIPE_TIER_TOO_HIGH": "This recipe needs a higher-tier factory.",
+				"INVALID_COORDINATES": "Invalid placement location.",
+				"INVALID_PLACEMENT_LOCATION": "This zone doesn't fit the building type.",
+				"RECIPE_HAS_NO_OUTPUTS": "This recipe has no outputs.",
+				"UNKNOWN_BUILDING_KIND": "Unknown building kind.",
+				"UNKNOWN_ERROR": "Could not place the building."
+			}
+		}
+	},
+	"drawer": {
+		"factory": {
+			"title": "Factory",
+			"recipe": "Recipe",
+			"operations": "Operation chain",
+			"moveUp": "Move up",
+			"moveDown": "Move down"
+		}
 	},
 	"map": {
-		"label": "Game map"
+		"label": "Game map",
+		"tooltip": {
+			"farm": "Farm",
+			"factory": "Factory"
+		}
 	}
 }
+

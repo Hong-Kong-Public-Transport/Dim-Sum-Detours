@@ -1,0 +1,55 @@
+<p-drawer
+	*transloco="let translate"
+	[visible]="visible()"
+	(visibleChange)="onVisibleChange($event)"
+	position="right"
+	[header]="translate('drawer.factory.title')"
+	[modal]="false"
+	[dismissible]="true"
+	styleClass="app-factory-drawer"
+>
+	@if (view(); as factory) {
+		<div class="column gap">
+			<div class="column gap-small">
+				<span class="app-muted app-small">{{ translate("drawer.factory.recipe") }}</span>
+				<strong>{{ factory.recipeName }}</strong>
+			</div>
+			<div class="column gap-small">
+				<span class="app-muted app-small">{{ translate("drawer.factory.operations") }}</span>
+				<ol class="column gap-small app-operation-list">
+					@for (operation of factory.operations; track operation.index) {
+						<li class="row center gap-small app-operation">
+							<span class="app-operation-index">{{ operation.index + 1 }}</span>
+							<span class="spacing">{{ operation.name }}</span>
+							<p-button
+								icon="pi pi-arrow-up"
+								[ariaLabel]="translate('drawer.factory.moveUp')"
+								[pTooltip]="translate('drawer.factory.moveUp')"
+								tooltipPosition="left"
+								severity="secondary"
+								[text]="true"
+								[rounded]="true"
+								size="small"
+								[disabled]="operation.index === 0"
+								(onClick)="moveOperation(operation.index, -1)"
+							/>
+							<p-button
+								icon="pi pi-arrow-down"
+								[ariaLabel]="translate('drawer.factory.moveDown')"
+								[pTooltip]="translate('drawer.factory.moveDown')"
+								tooltipPosition="left"
+								severity="secondary"
+								[text]="true"
+								[rounded]="true"
+								size="small"
+								[disabled]="operation.index === factory.operations.length - 1"
+								(onClick)="moveOperation(operation.index, 1)"
+							/>
+						</li>
+					}
+				</ol>
+			</div>
+		</div>
+	}
+</p-drawer>
+

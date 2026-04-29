@@ -1,0 +1,142 @@
+<div class="wrapper row" *transloco="let translate">
+	<aside class="app-sidebar column" [attr.aria-label]="translate('sidebar.label')">
+		<div class="content column gap padding-sides padding-top-bottom">
+			<app-panel icon="pi-hammer" [title]="translate('sidebar.build.title')">
+				<div class="column gap-small">
+					<p-button
+						[label]="translate('sidebar.build.placeFarm') + ' (' + farmCostFormatted + ')'"
+						icon="pi pi-leaf"
+						severity="success"
+						[outlined]="buildMode() !== 'FARM'"
+						[disabled]="!canAffordFarm()"
+						(onClick)="toggleBuildMode('FARM')"
+					/>
+					<p-button
+						[label]="translate('sidebar.build.placeFactory') + ' (' + factoryCostFormatted + ')'"
+						icon="pi pi-cog"
+						severity="info"
+						[outlined]="buildMode() !== 'FACTORY'"
+						[disabled]="!canAffordFactory()"
+						(onClick)="toggleBuildMode('FACTORY')"
+					/>
+					@if (buildMode() !== null && pendingPlacement() === null) {
+						<p-message severity="info" styleClass="app-small">{{ translate('sidebar.build.zonesHint.' + buildMode()) }}</p-message>
+						<p-message severity="secondary" styleClass="app-small">{{ translate('sidebar.build.clickHint') }}</p-message>
+					}
+					@if (pendingPlacement() !== null) {
+						<div class="column gap-small build-placement">
+							<span class="app-small">{{ translate("sidebar.build.pickRecipe") }}</span>
+							<p-select
+								[options]="recipeOptions()"
+								optionLabel="label"
+								optionValue="value"
+								[ngModel]="selectedRecipeId()"
+								(ngModelChange)="selectedRecipeId.set($event)"
+								[placeholder]="translate('sidebar.build.pickRecipe')"
+								appendTo="body"
+							/>
+							@if (!isPlacementValid()) {
+								<p-message severity="error">{{ translate('sidebar.build.errors.INVALID_PLACEMENT_LOCATION') }}</p-message>
+							}
+							<div class="row gap-small">
+								<p-button
+									[label]="translate('sidebar.build.confirm')"
+									icon="pi pi-check"
+									severity="success"
+									[disabled]="!selectedRecipeId() || !isPlacementValid()"
+									(onClick)="confirmPlacement()"
+								/>
+								<p-button
+									[label]="translate('sidebar.build.cancel')"
+									icon="pi pi-times"
+									severity="secondary"
+									[outlined]="true"
+									(onClick)="cancelPlacement()"
+								/>
+							</div>
+							@if (placementError()) {
+								<p-message severity="error">{{ translate(placementError()!) }}</p-message>
+							}
+						</div>
+					}
+				</div>
+			</app-panel>
+
+			<app-panel icon="pi-apple" [title]="translate('sidebar.ingredients')">
+				<ul class="column gap-small app-list">
+					@for (ingredient of ingredientViews(); track ingredient.id) {
+						<li class="row center gap-small">
+							<span>{{ ingredient.name }}</span>
+							<span class="app-muted app-small">({{ ingredient.category }})</span>
+						</li>
+					} @empty {
+						<li class="app-muted">{{ translate("sidebar.noIngredients") }}</li>
+					}
+				</ul>
+			</app-panel>
+
+			<app-panel icon="pi-book" [title]="translate('sidebar.recipes')">
+				<ul class="column gap-small app-list">
+					@for (recipe of recipeViews(); track recipe.id) {
+						<li class="column gap-small app-recipe">
+							<strong>{{ recipe.name }}</strong>
+							<span class="app-muted app-small">{{ recipe.inputs }} → {{ recipe.outputs }}</span>
+							<span class="app-muted app-small">{{ recipe.operations }}</span>
+						</li>
+					} @empty {
+						<li class="app-muted">{{ translate("sidebar.noRecipes") }}</li>
+					}
+				</ul>
+			</app-panel>
+
+			<app-panel icon="pi-truck" [title]="translate('sidebar.gtfsFeeds')">
+				<div class="column gap-small">
+					@if (feeds().length > 0) {
+						<p-select
+							[options]="feedOptions()"
+							optionLabel="label"
+							optionValue="value"
+							[ngModel]="selectedFeed()"
+							(ngModelChange)="setSelectedFeed($event)"
+							[placeholder]="translate('sidebar.selectFeed')"
+							[ariaLabel]="translate('sidebar.selectFeed')"
+							appendTo="body"
+						/>
+						@if (loadingZones()) {
+							<span class="app-muted app-small">{{ translate("sidebar.loadingZones") }}</span>
+						}
+					} @else {
+						<span class="app-muted">{{ translate("sidebar.noFeeds") }}</span>
+					}
+				</div>
+			</app-panel>
+
+			<app-panel icon="pi-map" [title]="translate('sidebar.legend')">
+				<ul class="column gap-small app-list">
+					<li class="row center gap-small"><span class="legend-swatch park"></span>{{ translate("sidebar.legendParks") }}</li>
+					<li class="row center gap-small"><span class="legend-swatch farmland"></span>{{ translate("sidebar.legendFarmland") }}</li>
+					<li class="row center gap-small"><span class="legend-swatch water"></span>{{ translate("sidebar.legendWater") }}</li>
+					<li class="row center gap-small"><span class="legend-swatch commercial"></span>{{ translate("sidebar.legendCommercial") }}</li>
+				</ul>
+			</app-panel>
+		</div>
+	</aside>
+
+	<div
+		#mapElement
+		class="app-map spacing"
+		[class.build-cursor-valid]="buildMode() !== null && hoverValid()"
+		[class.build-cursor-invalid]="buildMode() !== null && !hoverValid()"
+		role="application"
+		[attr.aria-label]="translate('map.label')"
+	></div>
+
+	<app-factory-operations-drawer
+		[factory]="selectedFactory()"
+		[recipes]="recipes()"
+		[operations]="operations()"
+		(closed)="closeFactoryPanel()"
+		(reorder)="onReorderOperations($event)"
+	/>
+</div>
+

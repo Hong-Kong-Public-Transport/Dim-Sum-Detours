@@ -23,7 +23,13 @@ public final class GameConstants {
 	/**
 	 * Money the player begins a new game with.
 	 */
-	public static final long STARTING_BALANCE = 50_000L;
+	public static final long STARTING_BALANCE = 10_000L;
+
+	/**
+	 * One-off cost to place each kind of building.
+	 */
+	public static final long FARM_BUILD_COST = 500L;
+	public static final long FACTORY_BUILD_COST = 1_500L;
 
 	/**
 	 * Daily upkeep deducted from each owned building, regardless of output.

@@ -1,0 +1,11 @@
+{
+	"id": "harvest",
+	"displayName": {
+		"en": "Harvest",
+		"zh": "採收"
+	},
+	"description": {
+		"en": "Collect a finished crop or evaporated mineral (e.g. sea salt) for shipping."
+	}
+}
+

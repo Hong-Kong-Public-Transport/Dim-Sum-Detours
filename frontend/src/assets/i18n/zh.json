@@ -3,9 +3,23 @@
 		"title": "Dim Sum Detours",
 		"languageSwitcher": "語言",
 		"themeToggle": "切換深色模式",
-		"lang": {
-			"en": "English",
-			"zh": "繁體中文 (香港)"
+		"balance": "餘額",
+		"reset": "重設遊戲",
+		"resetConfirm": "確定要清空所有資金、建築並從頭開始嗎？",
+		"resetAccept": "確定重設",
+		"resetCancel": "繼續遊玩",
+		"clock": {
+			"pause": "暫停",
+			"play": "繼續",
+			"day": {
+				"mon": "週一",
+				"tue": "週二",
+				"wed": "週三",
+				"thu": "週四",
+				"fri": "週五",
+				"sat": "週六",
+				"sun": "週日"
+			}
 		}
 	},
 	"sidebar": {
@@ -13,11 +27,55 @@
 		"ingredients": "食材",
 		"recipes": "食譜",
 		"gtfsFeeds": "GTFS 班次資料",
+		"selectFeed": "選擇班次資料",
+		"loadingZones": "正在載入用地分區…",
+		"legend": "圖例",
+		"legendParks": "公園（社區農圃）",
+		"legendFarmland": "農地",
+		"legendWater": "水域",
+		"legendCommercial": "商業區",
 		"noIngredients": "尚未載入食材。",
 		"noRecipes": "尚未載入食譜。",
-		"noFeeds": "請將 GTFS .zip 放到 data/gtfs/ 資料夾。"
+		"noFeeds": "請將 GTFS .zip 放到 data/gtfs/ 資料夾。",
+		"build": {
+			"title": "建設",
+			"placeFarm": "放置農場",
+			"placeFactory": "放置工廠",
+			"clickHint": "點擊地圖以放置。",
+			"zonesHint": {
+				"FARM": "農場只能設於公園或農地。",
+				"FACTORY": "工廠只能設於商業區。"
+			},
+			"pickRecipe": "選擇食譜",
+			"confirm": "確認",
+			"cancel": "取消",
+			"errors": {
+				"INSUFFICIENT_FUNDS": "資金不足。",
+				"UNKNOWN_RECIPE": "找不到此食譜。",
+				"RECIPE_TIER_TOO_HIGH": "此食譜需要更高等級的工廠。",
+				"INVALID_COORDINATES": "無效的放置位置。",
+				"INVALID_PLACEMENT_LOCATION": "此區域不適合這種建築。",
+				"RECIPE_HAS_NO_OUTPUTS": "此食譜沒有產出。",
+				"UNKNOWN_BUILDING_KIND": "未知的建築類型。",
+				"UNKNOWN_ERROR": "無法放置建築。"
+			}
+		}
+	},
+	"drawer": {
+		"factory": {
+			"title": "工廠",
+			"recipe": "食譜",
+			"operations": "工序鏈",
+			"moveUp": "上移",
+			"moveDown": "下移"
+		}
 	},
 	"map": {
-		"label": "遊戲地圖"
+		"label": "遊戲地圖",
+		"tooltip": {
+			"farm": "農場",
+			"factory": "工廠"
+		}
 	}
 }
+

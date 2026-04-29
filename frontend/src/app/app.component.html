@@ -1,5 +1,6 @@
 <div class="wrapper column" *transloco="let translate">
-	<p-toolbar styleClass="app-toolbar">
+	<p-confirmDialog/>
+	<p-toolbar>
 		<ng-template pTemplate="start">
 			<div class="row center gap-small">
 				<i class="pi pi-shop" aria-hidden="true"></i>
@@ -8,29 +9,39 @@
 		</ng-template>
 		<ng-template pTemplate="end">
 			<div class="row center gap-small">
+				<app-clock-controls/>
+				<div class="row center gap-small app-balance" [pTooltip]="translate('app.balance')" tooltipPosition="bottom">
+					<i class="pi pi-wallet" aria-hidden="true"></i>
+					<span>{{ formattedBalance() }}</span>
+				</div>
+				<p-button
+					icon="pi pi-refresh"
+					[ariaLabel]="translate('app.reset')"
+					[pTooltip]="translate('app.reset')"
+					tooltipPosition="bottom"
+					severity="danger"
+					[text]="true"
+					[rounded]="true"
+					(onClick)="confirmReset(translate('app.resetConfirm'), translate('app.reset'), translate('app.resetAccept'), translate('app.resetCancel'))"
+				/>
 				<p-button
 					[icon]="isDarkTheme() ? 'pi pi-sun' : 'pi pi-moon'"
 					[ariaLabel]="translate('app.themeToggle')"
+					[pTooltip]="translate('app.themeToggle')"
+					tooltipPosition="bottom"
 					severity="secondary"
 					[text]="true"
 					[rounded]="true"
 					(onClick)="toggleTheme()"
 				/>
 				<p-select
-					[options]="languageOptions()"
+					[options]="languageOptions"
 					optionLabel="label"
 					optionValue="code"
 					[ngModel]="activeLanguage()"
 					(ngModelChange)="setLanguage($event)"
 					[ariaLabel]="translate('app.languageSwitcher')"
-				>
-					<ng-template let-option pTemplate="selectedItem">
-						<span>{{ translate(option.labelKey) }}</span>
-					</ng-template>
-					<ng-template let-option pTemplate="item">
-						<span>{{ translate(option.labelKey) }}</span>
-					</ng-template>
-				</p-select>
+				/>
 			</div>
 		</ng-template>
 	</p-toolbar>
@@ -38,3 +49,4 @@
 		<app-map/>
 	</main>
 </div>
+

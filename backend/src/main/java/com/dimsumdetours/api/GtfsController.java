@@ -1,5 +1,6 @@
 package com.dimsumdetours.api;
 
+import com.dimsumdetours.gtfs.BoundingBox;
 import com.dimsumdetours.gtfs.GtfsLoader;
 import lombok.RequiredArgsConstructor;
 import org.onebusaway.gtfs.impl.GtfsRelationalDaoImpl;
@@ -9,7 +10,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
@@ -29,10 +29,9 @@ public class GtfsController {
 
 
 	@GetMapping("/feeds")
-	public Flux<String> listFeeds() {
-		return Mono.fromCallable(loader::listFeeds)
-			.subscribeOn(Schedulers.boundedElastic())
-			.flatMapMany(Flux::fromIterable);
+	public Mono<List<String>> listFeeds() {
+		return Mono.fromCallable(() -> List.copyOf(loader.listFeeds()))
+			.subscribeOn(Schedulers.boundedElastic());
 	}
 
 	@GetMapping("/feeds/{name}/summary")
@@ -46,6 +45,12 @@ public class GtfsController {
 					gtfsData.getAllRoutes().size(),
 					gtfsData.getAllTrips().size());
 			})
+			.subscribeOn(Schedulers.boundedElastic());
+	}
+
+	@GetMapping("/feeds/{name}/bbox")
+	public Mono<BoundingBox> boundingBox(@PathVariable String name) {
+		return Mono.fromCallable(() -> loader.computeBoundingBox(name))
 			.subscribeOn(Schedulers.boundedElastic());
 	}
 

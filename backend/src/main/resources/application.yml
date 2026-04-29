@@ -30,6 +30,8 @@ dimsumdetours:
   mods-dir: data/mods
   # Overpass API endpoint for OSM queries.
   overpass-url: https://overpass-api.de/api/interpreter
+  # Folder where Overpass responses are cached (per bounding-box). Leave blank to disable.
+  osm-cache-dir: data/osm
 
 logging:
   level:

@@ -1,4 +1,4 @@
-import {LocalizedString} from "../models/ingredient.model";
+import {LocalizedString} from "../model/ingredient.model";
 
 /** Mandatory fallback locale, mirrors the backend's {@code Ingredient.FALLBACK_LOCALE}. */
 export const FALLBACK_LOCALE = "en";

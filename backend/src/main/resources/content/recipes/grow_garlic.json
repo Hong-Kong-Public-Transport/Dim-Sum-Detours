@@ -1,0 +1,24 @@
+{
+	"id": "grow_garlic",
+	"displayName": {
+		"en": "Grow Garlic",
+		"zh": "種植蒜頭"
+	},
+	"inputs": [],
+	"operations": [
+		"grow"
+	],
+	"outputs": [
+		{
+			"ingredientId": "garlic",
+			"quantity": 1
+		}
+	],
+	"minimumFactoryTier": 1,
+	"operationDurationMinutes": 60,
+	"tags": [
+		"farm",
+		"raw"
+	]
+}
+

@@ -1,0 +1,24 @@
+{
+	"id": "grow_rice",
+	"displayName": {
+		"en": "Grow Rice",
+		"zh": "種植稻米"
+	},
+	"inputs": [],
+	"operations": [
+		"grow"
+	],
+	"outputs": [
+		{
+			"ingredientId": "rice",
+			"quantity": 1
+		}
+	],
+	"minimumFactoryTier": 1,
+	"operationDurationMinutes": 90,
+	"tags": [
+		"farm",
+		"raw"
+	]
+}
+

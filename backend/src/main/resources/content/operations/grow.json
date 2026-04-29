@@ -1,0 +1,11 @@
+{
+	"id": "grow",
+	"displayName": {
+		"en": "Grow",
+		"zh": "種植"
+	},
+	"description": {
+		"en": "Cultivate a crop on farmland or in a community garden until ready to harvest."
+	}
+}
+

@@ -24,4 +24,5 @@ public class DimSumDetoursProperties {
 	private @Nullable String contentDir;
 	private @Nullable String modsDir;
 	private @Nullable String overpassUrl;
+	private @Nullable String osmCacheDir;
 }

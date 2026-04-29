@@ -1,0 +1,36 @@
+.app-operation-list {
+	list-style: none;
+}
+
+.app-operation {
+	padding: 0.5rem;
+	border-radius: 4px;
+	background: var(--p-content-hover-background, rgba(0, 0, 0, 0.04));
+}
+
+.app-operation-index {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.5rem;
+	height: 1.5rem;
+	border-radius: 50%;
+	background: var(--p-primary-color);
+	color: var(--p-primary-contrast-color);
+	font-size: 0.75rem;
+	font-weight: 600;
+}
+
+.app-muted {
+	color: var(--p-text-muted-color);
+}
+
+.app-small {
+	font-size: 0.8rem;
+}
+
+:host ::ng-deep .app-factory-drawer {
+	width: 22rem;
+	max-width: 100vw;
+}
+

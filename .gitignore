@@ -26,6 +26,8 @@ data/gtfs/*.zip
 data/gtfs/cache/
 data/mods/
 data/saves/
+data/osm/
+data/db/
 
 # Keep the folder + its README
 !data/gtfs/README.md

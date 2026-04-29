@@ -1,0 +1,116 @@
+// Sidebar dimensions / chrome only — flex layout comes from utility classes in styles.scss.
+.app-sidebar {
+	width: 320px;
+	flex: 0 0 auto;
+	border-right: 1px solid var(--p-content-border-color, var(--light-color));
+	background: var(--p-content-background, var(--background-color));
+}
+
+.app-list {
+	list-style: none;
+
+	li {
+		font-size: 0.9rem;
+	}
+}
+
+// Muted / small text use PrimeNG's design tokens directly so dark mode flips correctly.
+.app-muted {
+	color: var(--p-text-muted-color);
+}
+
+.app-small {
+	font-size: 0.8rem;
+}
+
+.app-recipe {
+	padding: 0.4rem 0;
+	border-bottom: 1px dashed var(--p-content-border-color);
+
+	&:last-child {
+		border-bottom: none;
+	}
+}
+
+.app-map {
+	min-width: 0;
+	min-height: 24rem;
+	height: 100%;
+	width: 100%;
+}
+
+// Custom domain colours — the OSM zone categories are not severities so they stay hardcoded.
+.legend-swatch {
+	display: inline-block;
+	width: 14px;
+	height: 14px;
+	border-radius: 3px;
+	border: 1px solid rgba(0, 0, 0, 0.2);
+
+	&.park {
+		background: #3fa34d;
+	}
+
+	&.farmland {
+		background: #d4a373;
+	}
+
+	&.water {
+		background: #3a86ff;
+	}
+
+	&.commercial {
+		background: #9aa0a6;
+	}
+}
+
+.build-placement {
+	padding: 0.5rem;
+	border-radius: 4px;
+	background: var(--p-content-hover-background, rgba(0, 0, 0, 0.04));
+}
+
+// Placement-mode cursors — crosshair when valid, browser-native "no-drop" slash when invalid.
+.app-map.build-cursor-valid {
+	cursor: crosshair;
+}
+
+.app-map.build-cursor-invalid {
+	cursor: not-allowed;
+}
+
+// Building markers: a coloured circular pill with a PrimeIcon glyph centred inside.
+//
+// IMPORTANT: Leaflet's default `.leaflet-div-icon` class adds `background: #fff` and a
+// `border: 1px solid #666`. Those rules win against ours via specificity / CSS load order
+// when the className is *only* "building-marker farm" — which is why the leaf icon was
+// being hidden behind a white square. Reset both, then layer our colours on top.
+.building-marker {
+	background: transparent;
+	border: none;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	border-radius: 50%;
+	color: white;
+	font-size: 14px;
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+
+	// Make sure PrimeIcons inside the marker are sized predictably.
+	.pi {
+		font-size: 14px;
+		line-height: 1;
+	}
+
+	&.farm {
+		background: #3fa34d;
+	}
+
+	&.factory {
+		background: #6c757d;
+		cursor: pointer;
+	}
+}
+

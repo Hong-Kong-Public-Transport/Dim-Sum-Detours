@@ -53,4 +53,11 @@ public final class GameClock {
 	public int getMinuteOfDay() {
 		return (int) (gameMinutes % (60L * 24L));
 	}
+
+	/** Reset clock to t=0, 1× speed, unpaused. */
+	public void reset() {
+		this.gameMinutes = 0L;
+		this.speedMultiplier = 1;
+		this.paused = false;
+	}
 }

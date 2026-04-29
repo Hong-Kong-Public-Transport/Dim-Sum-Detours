@@ -1,12 +1,12 @@
 import {bootstrapApplication} from "@angular/platform-browser";
 import {AppComponent} from "./app/app.component";
-import {GAME_CONSTANTS} from "./app/core/constants/game.constants";
+import {GAME_CONSTANTS} from "./app/core/constant/game.constants";
 import {definePreset} from "@primeuix/themes";
 import Aura from "@primeuix/themes/aura";
 import {provideHttpClient} from "@angular/common/http";
 import {providePrimeNG} from "primeng/config";
 import {provideTransloco} from "@jsverse/transloco";
-import {getCookie} from "./app/core/utilities/utilities";
+import {getCookie} from "./app/core/utility/utilities";
 import {TranslocoHttpLoader} from "./app/transloco-loader";
 import {isDevMode} from "@angular/core";
 
