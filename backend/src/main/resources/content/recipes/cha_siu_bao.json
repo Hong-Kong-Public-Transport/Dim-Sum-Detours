@@ -1,0 +1,34 @@
+{
+	"id": "cha_siu_bao",
+	"displayName": {
+		"en": "Steam Cha Siu Bao",
+		"zh": "蒸叉燒包"
+	},
+	"inputs": [
+		{
+			"ingredientId": "cooked_rice",
+			"quantity": 1
+		},
+		{
+			"ingredientId": "soy_sauce",
+			"quantity": 1
+		}
+	],
+	"operations": [
+		"mix",
+		"steam"
+	],
+	"outputs": [
+		{
+			"ingredientId": "cha_siu_bao",
+			"quantity": 1
+		}
+	],
+	"minimumFactoryTier": 1,
+	"operationDurationMinutes": 25,
+	"tags": [
+		"dish",
+		"dim_sum"
+	]
+}
+

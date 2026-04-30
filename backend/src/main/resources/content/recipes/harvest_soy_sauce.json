@@ -1,0 +1,24 @@
+{
+	"id": "harvest_soy_sauce",
+	"displayName": {
+		"en": "Harvest Soy Sauce",
+		"zh": "釀造豉油"
+	},
+	"inputs": [],
+	"operations": [
+		"grow"
+	],
+	"outputs": [
+		{
+			"ingredientId": "soy_sauce",
+			"quantity": 2
+		}
+	],
+	"minimumFactoryTier": 1,
+	"operationDurationMinutes": 45,
+	"tags": [
+		"farm",
+		"raw"
+	]
+}
+

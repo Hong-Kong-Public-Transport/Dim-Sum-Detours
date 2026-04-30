@@ -1,0 +1,34 @@
+{
+	"id": "har_gow",
+	"displayName": {
+		"en": "Steam Har Gow",
+		"zh": "蒸蝦餃"
+	},
+	"inputs": [
+		{
+			"ingredientId": "cooked_rice",
+			"quantity": 1
+		},
+		{
+			"ingredientId": "white_pepper",
+			"quantity": 1
+		}
+	],
+	"operations": [
+		"mix",
+		"steam"
+	],
+	"outputs": [
+		{
+			"ingredientId": "har_gow",
+			"quantity": 1
+		}
+	],
+	"minimumFactoryTier": 1,
+	"operationDurationMinutes": 30,
+	"tags": [
+		"dish",
+		"dim_sum"
+	]
+}
+

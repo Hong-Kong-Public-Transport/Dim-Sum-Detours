@@ -15,4 +15,3 @@ public record Farm(
 		return BuildingKind.FARM;
 	}
 }
-

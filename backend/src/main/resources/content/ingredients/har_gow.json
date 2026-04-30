@@ -1,0 +1,17 @@
+{
+	"id": "har_gow",
+	"displayName": {
+		"en": "Har Gow",
+		"zh": "蝦餃"
+	},
+	"category": "processed",
+	"shelfLifeMinutes": 240,
+	"refrigeratable": true,
+	"baseValue": 70,
+	"tags": [
+		"dim_sum",
+		"steamed",
+		"perishable"
+	]
+}
+

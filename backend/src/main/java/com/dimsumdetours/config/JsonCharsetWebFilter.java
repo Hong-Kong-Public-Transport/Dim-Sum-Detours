@@ -38,4 +38,3 @@ public class JsonCharsetWebFilter implements WebFilter {
 		return chain.filter(exchange);
 	}
 }
-

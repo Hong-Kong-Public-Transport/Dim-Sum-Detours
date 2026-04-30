@@ -12,7 +12,13 @@
 		<div class="column gap">
 			<div class="column gap-small">
 				<span class="app-muted app-small">{{ translate("drawer.factory.recipe") }}</span>
-				<strong>{{ factory.recipeName }}</strong>
+				@if (factory.recipe) {
+					<app-recipe-tile
+						[recipe]="factory.recipe"
+						[ingredients]="ingredients()"
+						[operations]="operations()"
+					/>
+				}
 			</div>
 			<div class="column gap-small">
 				<span class="app-muted app-small">{{ translate("drawer.factory.operations") }}</span>
@@ -52,4 +58,3 @@
 		</div>
 	}
 </p-drawer>
-

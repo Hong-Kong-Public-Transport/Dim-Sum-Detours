@@ -4,10 +4,12 @@ import {ButtonModule} from "primeng/button";
 import {DrawerModule} from "primeng/drawer";
 import {TooltipModule} from "primeng/tooltip";
 
+import {localize} from "../../core/i18n/localize";
 import {Building} from "../../core/model/building.model";
+import {Ingredient} from "../../core/model/ingredient.model";
 import {Operation, Recipe} from "../../core/model/recipe.model";
 import {LanguageService} from "../../core/service/language.service";
-import {localize} from "../../core/i18n/localize";
+import {RecipeTileComponent} from "../recipe-tile/recipe-tile.component";
 
 interface FactoryOperationView {
 	readonly index: number;
@@ -16,7 +18,7 @@ interface FactoryOperationView {
 }
 
 interface FactoryView {
-	readonly recipeName: string;
+	readonly recipe: Recipe | null;
 	readonly operations: readonly FactoryOperationView[];
 }
 
@@ -27,7 +29,7 @@ interface FactoryView {
  */
 @Component({
 	selector: "app-factory-operations-drawer",
-	imports: [TranslocoDirective, ButtonModule, DrawerModule, TooltipModule],
+	imports: [ButtonModule, DrawerModule, RecipeTileComponent, TooltipModule, TranslocoDirective],
 	changeDetection: ChangeDetectionStrategy.OnPush,
 	templateUrl: "./factory-operations-drawer.component.html",
 	styleUrl: "./factory-operations-drawer.component.scss",
@@ -37,6 +39,7 @@ export class FactoryOperationsDrawerComponent {
 
 	readonly factory = input<Building | null>(null);
 	readonly recipes = input.required<readonly Recipe[]>();
+	readonly ingredients = input.required<readonly Ingredient[]>();
 	readonly operations = input.required<readonly Operation[]>();
 
 	readonly closed = output<void>();
@@ -50,14 +53,14 @@ export class FactoryOperationsDrawerComponent {
 			return null;
 		}
 		const language = this.languageService.activeLanguage();
-		const recipe = this.recipes().find((candidate) => candidate.id === factory.recipeId);
+		const recipe = this.recipes().find((candidate) => candidate.id === factory.recipeId) ?? null;
 		const operationLookup = new Map<string, Operation>();
 		for (const operation of this.operations()) {
 			operationLookup.set(operation.id, operation);
 		}
 		const operationIds = factory.operations ?? recipe?.operations ?? [];
 		return {
-			recipeName: recipe ? localize(recipe.displayName, language) : factory.recipeId,
+			recipe,
 			operations: operationIds.map((operationId, index) => {
 				const operation = operationLookup.get(operationId);
 				return {
@@ -90,4 +93,3 @@ export class FactoryOperationsDrawerComponent {
 		this.reorder.emit(reordered);
 	}
 }
-

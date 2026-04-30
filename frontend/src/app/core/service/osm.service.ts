@@ -1,6 +1,6 @@
 import {HttpClient} from "@angular/common/http";
-import {inject, Injectable} from "@angular/core";
-import {map, Observable} from "rxjs";
+import {inject, Injectable, signal} from "@angular/core";
+import {defer, finalize, map, Observable} from "rxjs";
 
 import type {Feature, FeatureCollection, PlacementZoneKind, Polygon} from "../model/geojson.model";
 
@@ -44,12 +44,23 @@ const RING_TOLERANCE_DEGREES = 1e-7;
 export class OsmService {
 	private readonly httpClient = inject(HttpClient);
 
+	/** Number of in-flight Overpass requests; the global loading dialog watches this. */
+	private readonly _inFlight = signal<number>(0);
+	/** True whenever any placement-zone request is still in flight. */
+	readonly loading = signal<boolean>(false);
+
 	placementZonesByFeed(feedName: string): Observable<FeatureCollection> {
-		return this.httpClient
-			.get<OverpassResponse>(
-				`/api/osm/placement-zones/by-feed/${encodeURIComponent(feedName)}`,
-			)
-			.pipe(map((overpass) => OsmService.toGeoJson(overpass)));
+		return defer(() => {
+			this.beginRequest();
+			return this.httpClient
+				.get<OverpassResponse>(
+					`/api/osm/placement-zones/by-feed/${encodeURIComponent(feedName)}`,
+				)
+				.pipe(
+					map((overpass) => OsmService.toGeoJson(overpass)),
+					finalize(() => this.endRequest()),
+				);
+		});
 	}
 
 	placementZones(bbox: {
@@ -58,16 +69,34 @@ export class OsmService {
 		north: number;
 		east: number;
 	}): Observable<FeatureCollection> {
-		return this.httpClient
-			.get<OverpassResponse>("/api/osm/placement-zones", {
-				params: {
-					south: String(bbox.south),
-					west: String(bbox.west),
-					north: String(bbox.north),
-					east: String(bbox.east),
-				},
-			})
-			.pipe(map((overpass) => OsmService.toGeoJson(overpass)));
+		return defer(() => {
+			this.beginRequest();
+			return this.httpClient
+				.get<OverpassResponse>("/api/osm/placement-zones", {
+					params: {
+						south: String(bbox.south),
+						west: String(bbox.west),
+						north: String(bbox.north),
+						east: String(bbox.east),
+					},
+				})
+				.pipe(
+					map((overpass) => OsmService.toGeoJson(overpass)),
+					finalize(() => this.endRequest()),
+				);
+		});
+	}
+
+	private beginRequest(): void {
+		this._inFlight.update((count) => count + 1);
+		this.loading.set(true);
+	}
+
+	private endRequest(): void {
+		this._inFlight.update((count) => Math.max(0, count - 1));
+		if (this._inFlight() === 0) {
+			this.loading.set(false);
+		}
 	}
 
 	/** Map an Overpass element's tags onto one of our placement-zone categories. */
@@ -80,6 +109,7 @@ export class OsmService {
 		if (tags["natural"] === "water") return "water";
 		if (tags["natural"] === "coastline") return "coastline";
 		if (tags["landuse"] === "commercial") return "commercial";
+		if (tags["landuse"] === "residential") return "residential";
 		return null;
 	}
 
@@ -163,7 +193,7 @@ export class OsmService {
 				}
 				features.push({
 					type: "Feature",
-					properties: {kind, osmId: `way/${element.id}`},
+					properties: {kind, osmId: `way/${element.id}`, name: element.tags?.["name"]},
 					geometry,
 				});
 			} else if (element.type === "relation" && element.members) {
@@ -195,7 +225,7 @@ export class OsmService {
 					});
 					features.push({
 						type: "Feature",
-						properties: {kind, osmId: `relation/${element.id}`},
+						properties: {kind, osmId: `relation/${element.id}`, name: element.tags?.["name"]},
 						geometry: {type: "MultiPolygon", coordinates: polygons},
 					});
 				}
@@ -205,7 +235,7 @@ export class OsmService {
 					for (const open of outerOpen) {
 						features.push({
 							type: "Feature",
-							properties: {kind, osmId: `relation/${element.id}/open`},
+							properties: {kind, osmId: `relation/${element.id}/open`, name: element.tags?.["name"]},
 							geometry: {type: "LineString", coordinates: open},
 						});
 					}
@@ -215,4 +245,3 @@ export class OsmService {
 		return {type: "FeatureCollection", features};
 	}
 }
-

@@ -4,6 +4,7 @@ import {Observable} from "rxjs";
 
 import {Ingredient, IngredientCategory} from "../model/ingredient.model";
 import {Operation, Recipe} from "../model/recipe.model";
+import {RestaurantTemplate} from "../model/restaurant-template.model";
 
 @Injectable({providedIn: "root"})
 export class ContentService {
@@ -35,5 +36,9 @@ export class ContentService {
 		return this.httpClient.get<Recipe>(
 			`/api/content/recipes/${encodeURIComponent(recipeId)}`,
 		);
+	}
+
+	listRestaurantTemplates(): Observable<RestaurantTemplate[]> {
+		return this.httpClient.get<RestaurantTemplate[]>("/api/content/restaurants");
 	}
 }

@@ -1,0 +1,32 @@
+<p-drawer
+	*transloco="let translate"
+	[visible]="visible()"
+	(visibleChange)="onVisibleChange($event)"
+	position="right"
+	[header]="translate('drawer.farm.title')"
+	[modal]="false"
+	[dismissible]="true"
+	styleClass="app-farm-drawer"
+>
+	@if (view(); as farm) {
+		<div class="column gap">
+			<div class="column gap-small">
+				<span class="app-muted app-small">{{ translate("drawer.farm.recipe") }}</span>
+				<app-recipe-tile
+					[recipe]="farm.recipe"
+					[ingredients]="ingredients()"
+					[operations]="operations()"
+				/>
+			</div>
+			<div class="column gap-small">
+				<span class="app-muted app-small">{{ translate("drawer.farm.outputIngredient") }}</span>
+				<strong>{{ farm.outputIngredientName }}</strong>
+			</div>
+			<div class="column gap-small">
+				<span class="app-muted app-small">{{ translate("drawer.farm.ratePerHour") }}</span>
+				<strong>{{ farm.ratePerHour }}</strong>
+			</div>
+		</div>
+	}
+</p-drawer>
+

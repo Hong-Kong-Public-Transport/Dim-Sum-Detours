@@ -16,4 +16,3 @@ export class PanelComponent {
 	readonly icon = input.required<string>();
 	readonly title = input.required<string>();
 }
-

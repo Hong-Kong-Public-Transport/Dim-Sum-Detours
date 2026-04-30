@@ -15,8 +15,13 @@ public final class GameClock {
 	private long gameMinutes;
 	private int speedMultiplier = 1;
 
+	/**
+	 * The simulation begins paused. The frontend's clock controls hand control to the player
+	 * on first interaction (Resume / pick a speed). This avoids the "delivery already in
+	 * flight before I've looked at the screen" surprise on a fresh tab.
+	 */
 	@Setter
-	private boolean paused;
+	private boolean paused = true;
 
 	/**
 	 * Advance the clock by {@code deltaGameMinutes}. Caller computes the delta from real time.
@@ -54,10 +59,10 @@ public final class GameClock {
 		return (int) (gameMinutes % (60L * 24L));
 	}
 
-	/** Reset clock to t=0, 1× speed, unpaused. */
+	/** Reset clock to t=0, 1× speed, paused (matches a fresh-tab boot). */
 	public void reset() {
 		this.gameMinutes = 0L;
 		this.speedMultiplier = 1;
-		this.paused = false;
+		this.paused = true;
 	}
 }

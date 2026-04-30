@@ -1,5 +1,20 @@
 <div class="wrapper column" *transloco="let translate">
 	<p-confirmDialog/>
+	<p-dialog
+		[visible]="loadingWorld()"
+		[modal]="true"
+		[closable]="false"
+		[closeOnEscape]="false"
+		[draggable]="false"
+		[resizable]="false"
+		[showHeader]="false"
+		styleClass="app-loading-dialog"
+	>
+		<div class="column center gap padding-sides padding-top-bottom">
+			<p-progressSpinner styleClass="app-loading-spinner"/>
+			<span>{{ translate(loadingMessage()) }}</span>
+		</div>
+	</p-dialog>
 	<p-toolbar>
 		<ng-template pTemplate="start">
 			<div class="row center gap-small">
@@ -49,4 +64,3 @@
 		<app-map/>
 	</main>
 </div>
-

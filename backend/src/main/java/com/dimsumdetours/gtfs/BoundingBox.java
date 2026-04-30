@@ -10,4 +10,3 @@ package com.dimsumdetours.gtfs;
  */
 public record BoundingBox(double south, double west, double north, double east) {
 }
-

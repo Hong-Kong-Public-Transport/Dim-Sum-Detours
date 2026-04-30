@@ -26,10 +26,13 @@ public final class GameConstants {
 	public static final long STARTING_BALANCE = 10_000L;
 
 	/**
-	 * One-off cost to place each kind of building.
+	 * One-off cost to place each kind of building. Restaurants are NPC-spawned (the player
+	 * doesn't open their own — they ship to existing ones), so their build cost is 0; the
+	 * field stays for symmetry should manual placement ever return.
 	 */
 	public static final long FARM_BUILD_COST = 500L;
 	public static final long FACTORY_BUILD_COST = 1_500L;
+	public static final long RESTAURANT_BUILD_COST = 0L;
 
 	/**
 	 * Daily upkeep deducted from each owned building, regardless of output.
@@ -71,6 +74,13 @@ public final class GameConstants {
 	public static final int FACTORY_TILE_METERS = 40;
 	public static final int RESTAURANT_TILE_METERS = 25;
 
+	/**
+	 * Minimum geodesic spacing between any two same-kind buildings, in metres. Acts as a soft
+	 * "one building per π·r² area" cap so a player can't spam a thousand farms onto the same
+	 * park. The frontend mirrors this in {@code placement-validator.ts} for cursor preview.
+	 */
+	public static final double MIN_BUILDING_SPACING_METERS = 100.0;
+
 	// ─────────────────────────────────────────────────────────────────────────────
 	// Factories (op-graph)
 	// ─────────────────────────────────────────────────────────────────────────────
@@ -98,6 +108,29 @@ public final class GameConstants {
 	 * Discount applied to a late delivery's payout (0.0 – 1.0).
 	 */
 	public static final double LATE_DELIVERY_PAYOUT_MULTIPLIER = 0.5;
+
+	/**
+	 * Fallback payout for fixture restaurants placed without a {@link com.dimsumdetours.sim.model.RestaurantTemplate}
+	 * (legacy / test helpers). Real restaurants always carry a template id and use its
+	 * {@code basePayout}.
+	 */
+	public static final long DEFAULT_RESTAURANT_PAYOUT = 600L;
+
+	/**
+	 * Number of restaurants the frontend auto-spawner drops onto the map once placement zones
+	 * resolve. Mirrored on the frontend in {@code GAME_CONSTANTS.spawn.restaurantsPerWorld};
+	 * kept in sync even though the spawn loop currently lives client-side.
+	 */
+	public static final int RESTAURANTS_PER_WORLD = 6;
+
+	/**
+	 * Phase-7 procedural order generator. Every {@code ORDER_GENERATION_INTERVAL_GAME_MINUTES}
+	 * a random open restaurant has one of its accepted recipes added as a pending {@link com.dimsumdetours.sim.model.Order}
+	 * (capped at {@code MAX_PENDING_ORDERS_PER_RESTAURANT} so a neglected restaurant stops
+	 * generating new noise instead of stacking expirations forever).
+	 */
+	public static final long ORDER_GENERATION_INTERVAL_GAME_MINUTES = 30L;
+	public static final int MAX_PENDING_ORDERS_PER_RESTAURANT = 3;
 
 	// ─────────────────────────────────────────────────────────────────────────────
 	// Vehicles (starting tier)

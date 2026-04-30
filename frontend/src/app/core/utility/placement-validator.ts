@@ -1,19 +1,22 @@
 import type {Feature, FeatureCollection, PlacementZoneKind} from "../model/geojson.model";
-import type {BuildingKind} from "../model/building.model";
+import type {Building, BuildingKind} from "../model/building.model";
+
+/** Subset of {@link BuildingKind} that the player places by hand. */
+type PlaceableBuildingKind = Extract<BuildingKind, "FARM" | "FACTORY" | "RESTAURANT">;
 
 /**
  * Allowed placement zones per building kind. Mirrors the README's spatial-puzzle rules:
  * <ul>
  *   <li><b>FARM</b> — only inside parks (community gardens) or farmland.</li>
  *   <li><b>FACTORY</b> — only inside commercial zones.</li>
+ *   <li><b>RESTAURANT</b> — residential or commercial mix (Phase 6: manual placement; later
+ *       phases auto-spawn).</li>
  * </ul>
- *
- * Restaurants are spawned automatically in residential/commercial mix later (Phase 6),
- * so they're not in this map yet.
  */
-export const ALLOWED_ZONES: Readonly<Record<BuildingKind, ReadonlyArray<PlacementZoneKind>>> = Object.freeze({
+export const ALLOWED_ZONES: Readonly<Record<PlaceableBuildingKind, ReadonlyArray<PlacementZoneKind>>> = Object.freeze({
 	FARM: Object.freeze(["park", "farmland"] as const),
 	FACTORY: Object.freeze(["commercial"] as const),
+	RESTAURANT: Object.freeze(["residential", "commercial"] as const),
 });
 
 /** Standard ray-casting point-in-polygon. Ring is `[lon, lat][]`. */
@@ -69,7 +72,7 @@ function featureContains(feature: Feature, longitude: number, latitude: number):
  * confirm-button gate.
  */
 export function isValidPlacement(
-	kind: BuildingKind,
+	kind: PlaceableBuildingKind,
 	latitude: number,
 	longitude: number,
 	collection: FeatureCollection | null,
@@ -89,5 +92,40 @@ export function isValidPlacement(
 		}
 	}
 	return false;
+}
+
+/** Great-circle distance in metres (WGS-84 mean radius). Mirrors backend `GameState.haversineMetres`. */
+export function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+	const earthRadiusMeters = 6_371_000;
+	const phi1 = (lat1 * Math.PI) / 180;
+	const phi2 = (lat2 * Math.PI) / 180;
+	const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+	const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+	const a = Math.sin(deltaPhi / 2) ** 2
+		+ Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) ** 2;
+	const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+	return earthRadiusMeters * c;
+}
+
+/**
+ * True iff no existing same-kind building sits within {@code minSpacingMeters} of the proposed
+ * location. Mirrors the backend density cap so the cursor preview matches the server's verdict.
+ */
+export function respectsSpacing(
+	kind: PlaceableBuildingKind,
+	latitude: number,
+	longitude: number,
+	buildings: readonly Building[],
+	minSpacingMeters: number,
+): boolean {
+	for (const existing of buildings) {
+		if (existing.kind !== kind) {
+			continue;
+		}
+		if (distanceMeters(existing.lat, existing.lon, latitude, longitude) < minSpacingMeters) {
+			return false;
+		}
+	}
+	return true;
 }
 

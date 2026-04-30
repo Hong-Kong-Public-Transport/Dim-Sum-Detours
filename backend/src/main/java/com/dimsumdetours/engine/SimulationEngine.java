@@ -1,6 +1,7 @@
 package com.dimsumdetours.engine;
 
 import com.dimsumdetours.config.GameConstants;
+import com.dimsumdetours.sim.model.OrderEvent;
 import com.dimsumdetours.sim.state.GameState;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -29,9 +30,14 @@ import java.time.Duration;
 public class SimulationEngine {
 
 	private final GameState gameState;
+	private final OrderGenerator orderGenerator;
 
 	private final Sinks.Many<GameState.ClockSnapshot> clockSink =
 		Sinks.many().multicast().onBackpressureBuffer(1, false);
+
+	/** Phase-6 multicast of order lifecycle events (enqueued / fulfilled / expired). */
+	private final Sinks.Many<OrderEvent> orderSink =
+		Sinks.many().multicast().onBackpressureBuffer(16, false);
 
 	private @org.jspecify.annotations.Nullable Disposable tickSubscription;
 
@@ -69,7 +75,18 @@ public class SimulationEngine {
 					gameState.advanceClock(whole);
 				}
 			}
-			clockSink.tryEmitNext(gameState.getClockSnapshot());
+			GameState.ClockSnapshot after = gameState.getClockSnapshot();
+			// Drain expired orders once per tick; each gets pushed onto the order SSE stream.
+			for (GameState.ExpiredOrderEvent expired : gameState.expirePendingOrders()) {
+				orderSink.tryEmitNext(new OrderEvent.Expired(
+					expired.order().id(),
+					expired.order().restaurantId(),
+					expired.newReputation(),
+					after.gameMinutes()));
+			}
+			// Phase-7: procedural demand. Emit at most one new order per tick.
+			orderGenerator.maybeGenerate(after.gameMinutes()).ifPresent(orderSink::tryEmitNext);
+			clockSink.tryEmitNext(after);
 		} catch (RuntimeException ex) {
 			log.warn("Simulation tick failed: {}", ex.getMessage());
 		}
@@ -79,5 +96,18 @@ public class SimulationEngine {
 	public Flux<GameState.ClockSnapshot> clockStream() {
 		return clockSink.asFlux();
 	}
-}
 
+	/**
+	 * Live stream of restaurant-order lifecycle events. Subscribed to by the SSE controller
+	 * and emitted from {@link com.dimsumdetours.api.GameController} on enqueue / fulfill, and
+	 * from the engine itself on expiry.
+	 */
+	public Flux<OrderEvent> orderStream() {
+		return orderSink.asFlux();
+	}
+
+	/** Push an event onto the order SSE stream. Called from the API after enqueue / fulfill. */
+	public void publishOrderEvent(OrderEvent event) {
+		orderSink.tryEmitNext(event);
+	}
+}

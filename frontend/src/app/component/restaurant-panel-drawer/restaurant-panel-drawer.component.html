@@ -1,0 +1,70 @@
+<p-drawer
+	*transloco="let translate"
+	[visible]="visible()"
+	(visibleChange)="onVisibleChange($event)"
+	position="right"
+	[header]="translate('drawer.restaurant.title')"
+	[modal]="false"
+	[dismissible]="true"
+	styleClass="app-restaurant-drawer"
+>
+	@if (restaurant(); as restaurant) {
+		<div class="column gap">
+			@if (recipe(); as recipe) {
+				<div class="column gap-small">
+					<span class="app-muted app-small">{{ translate("drawer.restaurant.recipe") }}</span>
+					<app-recipe-tile
+						[recipe]="recipe"
+						[ingredients]="ingredients()"
+						[operations]="operations()"
+					/>
+				</div>
+			}
+
+			<div class="column gap-small">
+				<span class="app-muted app-small">{{ translate("drawer.restaurant.reputation") }}</span>
+				<p-progressbar [value]="reputationPercent()" [showValue]="true" />
+			</div>
+
+			<div class="column gap-small">
+				<div class="row center between gap-small">
+					<span class="app-muted app-small">{{ translate("drawer.restaurant.orders") }}</span>
+					<p-button
+						[label]="translate('drawer.restaurant.enqueueTest')"
+						icon="pi pi-plus"
+						size="small"
+						severity="secondary"
+						[outlined]="true"
+						[disabled]="submitting()"
+						(onClick)="enqueueTestOrder()"
+					/>
+				</div>
+
+				@for (row of orderRows(); track row.order.id) {
+					<div class="order-row column gap-small">
+						<div class="row center between gap-small">
+							<span class="app-small">×{{ row.order.quantity }} · {{ row.minutesRemaining }} {{ translate("drawer.restaurant.minutes") }}</span>
+							<p-button
+								[label]="translate('drawer.restaurant.fulfill')"
+								icon="pi pi-check"
+								size="small"
+								severity="success"
+								[pTooltip]="translate('drawer.restaurant.fulfillTooltip')"
+								tooltipPosition="left"
+								(onClick)="fulfill(row.order.id)"
+							/>
+						</div>
+						<p-progressbar
+							[value]="row.remainingPercent"
+							[showValue]="false"
+							[color]="row.severity === 'danger' ? '#e24c4c' : row.severity === 'warn' ? '#f0b400' : '#3fa34d'"
+						/>
+					</div>
+				} @empty {
+					<span class="app-muted app-small">{{ translate("drawer.restaurant.noOrders") }}</span>
+				}
+			</div>
+		</div>
+	}
+</p-drawer>
+

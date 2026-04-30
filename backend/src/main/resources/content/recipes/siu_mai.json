@@ -1,0 +1,34 @@
+{
+	"id": "siu_mai",
+	"displayName": {
+		"en": "Steam Siu Mai",
+		"zh": "蒸燒賣"
+	},
+	"inputs": [
+		{
+			"ingredientId": "cooked_rice",
+			"quantity": 1
+		},
+		{
+			"ingredientId": "chili_oil",
+			"quantity": 1
+		}
+	],
+	"operations": [
+		"mix",
+		"steam"
+	],
+	"outputs": [
+		{
+			"ingredientId": "siu_mai",
+			"quantity": 1
+		}
+	],
+	"minimumFactoryTier": 1,
+	"operationDurationMinutes": 28,
+	"tags": [
+		"dish",
+		"dim_sum"
+	]
+}
+

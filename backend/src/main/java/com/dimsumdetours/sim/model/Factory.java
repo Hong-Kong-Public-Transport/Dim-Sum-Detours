@@ -57,4 +57,3 @@ public record Factory(
 		return true;
 	}
 }
-

@@ -40,4 +40,3 @@ public record Money(long amount) {
 		return this.amount >= other.amount;
 	}
 }
-

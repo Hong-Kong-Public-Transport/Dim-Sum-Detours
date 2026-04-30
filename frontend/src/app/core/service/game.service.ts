@@ -20,9 +20,17 @@ export class GameService {
 
 	private readonly _balance = signal<number>(GAME_CONSTANTS.economy.startingBalance);
 	private readonly _buildings = signal<readonly Building[]>([]);
+	/** Set true after the first {@link refreshBuildings} resolves so consumers (the restaurant
+	 * spawner) can distinguish "no restaurants yet" from "haven't asked the server yet". */
+	private readonly _buildingsLoaded = signal<boolean>(false);
+	/** Monotonically incremented whenever the game is reset. Lets stateful services
+	 * (e.g. {@code RestaurantSpawnerService}) re-arm one-shot guards via an effect. */
+	private readonly _resetCount = signal<number>(0);
 
 	readonly balance = this._balance.asReadonly();
 	readonly buildings = this._buildings.asReadonly();
+	readonly buildingsLoaded = this._buildingsLoaded.asReadonly();
+	readonly resetCount = this._resetCount.asReadonly();
 
 	refreshBalance(): Observable<BalanceResponse> {
 		return this.httpClient.get<BalanceResponse>("/api/game/balance").pipe(
@@ -32,7 +40,10 @@ export class GameService {
 
 	refreshBuildings(): Observable<readonly Building[]> {
 		return this.httpClient.get<Building[]>("/api/game/buildings").pipe(
-			tap((list) => this._buildings.set(list)),
+			tap((list) => {
+				this._buildings.set(list);
+				this._buildingsLoaded.set(true);
+			}),
 		);
 	}
 
@@ -94,9 +105,9 @@ export class GameService {
 			tap(() => {
 				this._balance.set(GAME_CONSTANTS.economy.startingBalance);
 				this._buildings.set([]);
+				this._resetCount.update((count) => count + 1);
 			}),
 			map(() => void 0),
 		);
 	}
 }
-

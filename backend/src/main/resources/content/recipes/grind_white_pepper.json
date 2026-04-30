@@ -1,0 +1,24 @@
+{
+	"id": "grind_white_pepper",
+	"displayName": {
+		"en": "Grind White Pepper",
+		"zh": "研磨白胡椒"
+	},
+	"inputs": [],
+	"operations": [
+		"grow"
+	],
+	"outputs": [
+		{
+			"ingredientId": "white_pepper",
+			"quantity": 2
+		}
+	],
+	"minimumFactoryTier": 1,
+	"operationDurationMinutes": 40,
+	"tags": [
+		"farm",
+		"raw"
+	]
+}
+

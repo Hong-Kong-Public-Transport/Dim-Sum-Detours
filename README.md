@@ -189,16 +189,24 @@ OSM and GTFS responses are **cached locally** so you're not hammering APIs every
 
 Buildings can only be placed on zones that fit their kind:
 
-| Building    | Allowed OSM zones                  |
-|-------------|------------------------------------|
-| **Farm**    | `leisure=park`, `landuse=farmland` |
-| **Factory** | `landuse=commercial`               |
-| Restaurant  | spawned automatically (Phase 6+)   |
+| Building       | Allowed OSM zones                            |
+|----------------|----------------------------------------------|
+| **Farm**       | `leisure=park`, `landuse=farmland`           |
+| **Factory**    | `landuse=commercial`                         |
+| **Restaurant** | `landuse=residential`, `landuse=commercial` (auto-spawned) |
 
 The frontend previews validity live: the cursor turns into a "no" symbol when hovering an
 invalid zone, and the **Confirm** button is disabled. The same rule will be enforced
 server-side once the OSM zone cache is moved to the backend (`INVALID_PLACEMENT_LOCATION`
 error code is already wired through the API).
+
+### Density cap
+
+To stop a player spamming a thousand farms onto a single park, every newly-placed building
+must sit at least `MIN_BUILDING_SPACING_METERS` (currently **100 m**) away from any other
+building of the **same kind**. The cap lives in `com.dimsumdetours.config.GameConstants` and
+is mirrored in the frontend's `game.constants.ts` so the cursor preview matches the server's
+verdict; the API rejects violations with `TOO_CLOSE_TO_EXISTING_BUILDING`.
 
 ### GTFS `shapes.txt` is optional
 
@@ -413,13 +421,94 @@ Frontend serves at `http://localhost:4200` and proxies `/api` to the backend.
 | 3    | Place a farm, place a factory, hardcoded recipe. Money counter.                                                                                                                       |       ✅        |
 | 4    | Game clock + speed controls. Spawn a shipment that animates along a GTFS trip.                                                                                                        |       ✅        |
 | 5    | Factory operation graph UI (drag/drop) using JSON-defined operations.                                                                                                                 |       ✅        |
-| 6    | Restaurant + patience timer + first end-to-end delivery. **"Is it fun?" checkpoint.**                                                                                                 | 🚧 in progress |
-| 7+   | Spoilage, reputation, second restaurant, milestones 1–3.                                                                                                                              |       ⬜        |
+| 6    | Restaurant + patience timer + first end-to-end delivery. **"Is it fun?" checkpoint.**                                                                                                |       ✅        |
+| 7+   | Procedural orders, dim-sum content, polish from Week-6 playtest. Spoilage, reputation, second restaurant, milestones 1–3.                                                            | 🚧 in progress |
 
 **Don't build** trees, ingredient walking, modding UI, or visual polish until Week 6 proves the loop works.
+
+### Week 7 task breakdown (in progress)
+
+Polish from the Week-6 playtest, then attack the next pressure systems:
+
+1. ✅ **Pause on start.** `GameClock` boots with `paused = true`; reset keeps it paused. The fresh-tab "delivery already in flight before I've looked at the screen" surprise is gone.
+2. ✅ **Free restaurant auto-spawn.** Restaurants are NPC demand, not player infrastructure — `RESTAURANT_BUILD_COST` is now `0` (kept as a constant for symmetry). Refreshing the tab no longer drains the wallet by `$800 × 6`.
+3. ✅ **Idempotent spawn semantics.** `RestaurantSpawnerService` now waits for `GameService.buildingsLoaded()` before deciding, so a refresh against a still-warm backend never spawns a second roster on top of the existing one. Reset re-arms the guard via a `resetCount` signal so a freshly wiped game gets a new roster.
+4. ✅ **Drawer chrome.** Right-edge drawers (`app-restaurant-drawer`, `app-farm-drawer`, `app-factory-drawer`) are now constrained to below the toolbar, so the wallet, clock, and language picker stay visible while inspecting a building.
+5. ✅ **Procedural order generation.** New `OrderGenerator` service emits one new `Order` every `ORDER_GENERATION_INTERVAL_GAME_MINUTES` (default 30 game-minutes) against a random open restaurant whose pending queue is below `MAX_PENDING_ORDERS_PER_RESTAURANT` (default 3). Cadence is anchored to the threshold rather than the current minute, so high game-speeds emit exactly one order per interval instead of bursting. `SimulationEngine.tick()` calls into the generator and broadcasts the resulting `OrderEvent.Enqueued` onto the SSE stream; `/api/game/reset` calls `OrderGenerator.reset()` so the schedule re-aligns to the new clock.
+6. ✅ **Dim-sum starter content.** Three condiment ingredients (`soy_sauce`, `chili_oil`, `white_pepper`) with matching no-input farm recipes (`harvest_soy_sauce`, `press_chili_oil`, `grind_white_pepper`). Three dim-sum dishes (`cha_siu_bao` 叉燒包, `har_gow` 蝦餃, `siu_mai` 燒賣) with two-input factory recipes that combine `cooked_rice` and a condiment (proof-of-concept until protein/dough chains land in Phase 8). Restaurant templates updated: `dim_sum_house` now demands the three dim-sum dishes; `garlic_noodle_bar` accepts har gow alongside garlic; new `tea_house` template demands condiment recipes for an ultra-easy first delivery target.
+7. ✅ **Map polish round 2.** Zone polygons are now sorted largest-area-first before being added to the GeoJSON layer, so a small park nested inside a big residential block stays clickable. Hover tooltips for both zones and building markers now appear *above* the cursor instead of below. New reusable `<app-search-box>` component (PrimeNG icon-field wrapper, two-way `value` model) plumbed into the sidebar Ingredients panel, sidebar Recipes panel, and the placement recipe-picker dialog so the growing recipe list is filterable by name or id. Empty-state messages distinguish between "list never loaded" and "no matches".
+8. ✅ **Delivery van fallback.** `DeliveryService.pickNearestSource` now walks the recipe graph: if no building runs the order's exact recipe, it falls back to the nearest farm/factory whose output is consumed (transitively) by the recipe's input chain. The README's "ingredients have legs" promise still belongs to Phase 8, but the player no longer stares at a static map after building a rice farm for a `cha_siu_bao` order — a van crawls from the farm to the restaurant, making it visually obvious that the chain is partially wired up.
+9. ⬜ **Spoilage timer.** Decrement `shelfLifeMinutes` on ingredients in transit; spoiled deliveries arrive worthless and reputation still drops.
+10. ⬜ **GTFS-trip-shape routing.** Replace the straight-line delivery animation with a polyline pulled from a real GTFS trip whose shape passes near both source and restaurant.
+11. ⬜ **Daily upkeep.** Once per game-day, deduct each owned building's `dailyUpkeep`. Forces "use it or demolish it".
+12. ⬜ **Restaurant close threshold.** When reputation falls below `RESTAURANT_CLOSE_REPUTATION_THRESHOLD`, mark the restaurant closed; stop generating orders against it; visually grey out the marker.
+
+> **About delivery vehicles.** Today's `DeliveryService` is a placeholder: when an order is
+> enqueued, it picks the nearest farm/factory whose recipe matches and drives a
+> straight-line `pi-truck` marker to the restaurant. It does **not** consult the GTFS
+> schedule yet. The README's promise — *"ingredients have legs and can walk by themselves,
+> even if super slow, but they will take a bus if instructed to"* — is the Phase-8 design
+> goal: every ingredient is a tiny autonomous walker, and bus stops are optional speed-ups
+> the player can opt into. Phase 7's job is to get spoilage and demand pressure right
+> first; the walker/transit dichotomy lands once those bite.
+
+### Week 6 task breakdown (complete)
+
+Restaurant + patience timer + first end-to-end delivery. Tasks ordered so each unblocks the next:
+
+1. ✅ **Sim model scaffolding** — `Restaurant` record + `BuildingKind.RESTAURANT` + sealed-permits update on `Building`. Direct placement enabled (auto-spawn comes later) so a fixture restaurant is testable today.
+2. ✅ **Order + patience timer** — `Order(recipeId, quantity, deadlineGameMinutes)` value type and a `RestaurantOrderQueue` held outside the `Restaurant` record (keeps the record a value type). `OrderResult` discriminator (`FULFILLED` / `LATE` / `EXPIRED`); `GameState.expirePendingOrders()` drains expired orders, `enqueueOrder` / `fulfillOrder` for the API.
+3. ✅ **Restaurant content schema** — `RestaurantTemplate` record + `backend/src/main/resources/content/restaurants/*.json` (`dim_sum_house`, `garlic_noodle_bar`). `ContentLoader` validates `acceptedRecipeIds` against the recipe registry; `ContentRegistry` exposes `findRestaurantTemplate` / `allRestaurantTemplates`. `GET /api/content/restaurants` serves the catalogue.
+4. ✅ **API + SSE** — `GET /api/game/orders`, `GET /api/game/restaurants/{id}/orders`, `POST /api/game/restaurants/{id}/orders` (enqueue), `POST /api/game/restaurants/{r}/orders/{o}/fulfill`. `BuildingDto` carries `reputation` for restaurants. `GET /api/game/orders/stream` streams `OrderEvent.Enqueued | Fulfilled | Expired` via a multicast `Sinks.Many` in `SimulationEngine`. Expiry is drained on every tick.
+5. ✅ **Delivery flow** — `DeliveryService` reacts to `ENQUEUED` SSE frames, picks the nearest farm/factory whose `recipeId` matches, and queues a `DeliveryAnimation`. The map interpolates a `pi-truck` marker linearly between source and restaurant (speed scales with the game-clock multiplier). On arrival the frontend POSTs to `/fulfill`; the backend credits the wallet (full payout on time, half late) and bumps reputation.
+6. ✅ **Frontend** — `RestaurantPanelDrawerComponent` with `<p-progressbar>` patience bars wired in `MapComponent`; restaurant marker click opens the drawer. `RestaurantSpawnerService` auto-spawns `GAME_CONSTANTS.spawn.restaurantsPerWorld` (default 6) restaurants on residential/commercial zone centroids once both placement zones and templates have loaded. Residential zone in `OsmService.classify`, `geojson.model.ts`, `placement-validator`, `OverpassClient`, plus a legend swatch + i18n key. Density cap exempts cross-kind buildings. The shared `RecipeTileComponent` continues to drive the sidebar and every drawer.
+7. ✅ **i18n + docs** — `drawer.restaurant.*`, `osm.zone.residential`, `sidebar.legendResidential`, `map.tooltip.delivery`, `map.tooltip.restaurant` mirrored across `en.json` and `zh.json`. `docs/RESTAURANTS.md` documents the `RestaurantTemplate` JSON schema, the built-in catalogue, the modding rules, and the lifecycle.
+8. ✅ **Tests** — `RestaurantTest` (reputation clamp + invariants), `OrderTest` (constructor invariants + `remainingMinutes`), `GameStatePlacementTest` (density cap + restaurant tier-gate exemption), `GameStateOrdersTest` (FULFILLED / LATE / EXPIRED end-to-end). All green via `gradle test`.
+
+### Is it fun? (Week 6 playtest)
+
+A fresh game now feels like *a game* rather than a sandbox: the city lights up with a half-dozen
+restaurants the moment a feed loads, ENQUEUED-driven delivery trucks crawl visibly across the
+map at 1×, and the patience progress bars in the restaurant drawer give immediate emotional
+stakes to whether the player has *actually* set up enough farms and factories along the way.
+
+What works:
+
+- **The end-to-end loop closes.** Place a farm whose `recipeId` matches a restaurant's house
+  dish, click "New test order" in the drawer, and a `pi-truck` marker walks from farm to
+  restaurant in real time, fulfilling the order and crediting the wallet. The reputation bar
+  ticks up. That's the loop the README has been promising for six weeks.
+- **Auto-spawn removes the dead start.** The previous build dropped the player onto an empty
+  map and asked them to invent something to do. Six restaurants demanding `garlic_rice`
+  removes that paralysis instantly.
+- **The clock-driven animation feels right.** At 1× a delivery feels like a brisk delivery
+  van; at 16× the same delivery becomes a quick pulse, which is exactly the texture
+  Factorio-likes lean on for "watch your factory work" satisfaction.
+
+What doesn't yet:
+
+- Only one house dish per restaurant template; orders are all manually triggered. There's no
+  procedural demand pressure yet, so a player who never clicks "New test order" never feels
+  the game.
+- Deliveries cut straight across the map. The README has been promising GTFS-trip-shape
+  routing since Phase 4 — Phase 7 needs to actually do it.
+- No spoilage, no upkeep drain, no second-restaurant dynamic. The economy is a one-way
+  ratchet upward today.
+- Restaurants never close. Reputation falls but never crosses the close threshold because
+  the game doesn't yet auto-enqueue orders fast enough to expire them.
+
+Phase 7 priorities, in order:
+
+1. Procedural order generation tied to the game clock so the patience system actually bites.
+2. Ingredient spoilage (`shelfLifeMinutes` on the ingredient JSON, decrement in transit).
+3. GTFS-trip-shape routing for delivery animations — pick a real trip, walk its polyline.
+4. Daily upkeep deduction so idle infrastructure costs the player something.
+5. Restaurant-close threshold (`RESTAURANT_CLOSE_REPUTATION_THRESHOLD` is already a constant —
+   nothing reads it yet) so the loss state has teeth.
 
 ## Documentation
 
 - [`docs/CODE_STYLES.md`](docs/CODE_STYLES.md) — naming, formatting, and architecture rules
 - [`docs/INGREDIENTS.md`](docs/INGREDIENTS.md) — full ingredient catalogue + JSON schema
 - [`docs/RECIPES.md`](docs/RECIPES.md) — full recipe catalogue + JSON schema
+- [`docs/RESTAURANTS.md`](docs/RESTAURANTS.md) — restaurant template schema, lifecycle, and modding rules

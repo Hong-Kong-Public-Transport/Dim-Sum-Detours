@@ -8,11 +8,14 @@ export type PlacementZoneKind =
 	| "farmland"
 	| "water"
 	| "coastline"
-	| "commercial";
+	| "commercial"
+	| "residential";
 
 export interface PlacementZoneProperties {
 	readonly kind: PlacementZoneKind;
 	readonly osmId: string;
+	/** Human-readable name copied from OSM `tags.name`, when present. */
+	readonly name?: string;
 }
 
 export type Polygon =
@@ -30,4 +33,3 @@ export interface FeatureCollection {
 	readonly type: "FeatureCollection";
 	readonly features: readonly Feature[];
 }
-

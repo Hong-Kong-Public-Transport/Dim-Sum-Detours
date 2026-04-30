@@ -73,4 +73,3 @@ public class ClockController {
 	public record SpeedRequest(int speed) {
 	}
 }
-

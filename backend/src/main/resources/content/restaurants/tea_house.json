@@ -1,0 +1,22 @@
+{
+	"id": "tea_house",
+	"displayName": {
+		"en": "Corner Tea House",
+		"zh": "街角茶居"
+	},
+	"acceptedRecipeIds": [
+		"harvest_soy_sauce",
+		"press_chili_oil",
+		"grind_white_pepper",
+		"cha_siu_bao"
+	],
+	"basePatienceMinutes": 300,
+	"basePayout": 350,
+	"tags": [
+		"casual",
+		"tier_1",
+		"dim_sum"
+	]
+}
+
+

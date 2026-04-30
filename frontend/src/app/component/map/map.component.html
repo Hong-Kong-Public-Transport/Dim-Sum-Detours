@@ -5,88 +5,80 @@
 				<div class="column gap-small">
 					<p-button
 						[label]="translate('sidebar.build.placeFarm') + ' (' + farmCostFormatted + ')'"
-						icon="pi pi-leaf"
+						icon="pi pi-apple"
 						severity="success"
 						[outlined]="buildMode() !== 'FARM'"
-						[disabled]="!canAffordFarm()"
-						(onClick)="toggleBuildMode('FARM')"
+						[disabled]="!canAffordFarm() || buildMode() !== null"
+						(onClick)="openRecipePicker('FARM')"
 					/>
 					<p-button
 						[label]="translate('sidebar.build.placeFactory') + ' (' + factoryCostFormatted + ')'"
 						icon="pi pi-cog"
 						severity="info"
 						[outlined]="buildMode() !== 'FACTORY'"
-						[disabled]="!canAffordFactory()"
-						(onClick)="toggleBuildMode('FACTORY')"
+						[disabled]="!canAffordFactory() || buildMode() !== null"
+						(onClick)="openRecipePicker('FACTORY')"
 					/>
-					@if (buildMode() !== null && pendingPlacement() === null) {
+					@if (buildMode() !== null) {
 						<p-message severity="info" styleClass="app-small">{{ translate('sidebar.build.zonesHint.' + buildMode()) }}</p-message>
 						<p-message severity="secondary" styleClass="app-small">{{ translate('sidebar.build.clickHint') }}</p-message>
+						<p-button
+							[label]="translate('sidebar.build.cancel')"
+							icon="pi pi-times"
+							severity="secondary"
+							[outlined]="true"
+							(onClick)="cancelPlacement()"
+						/>
 					}
-					@if (pendingPlacement() !== null) {
-						<div class="column gap-small build-placement">
-							<span class="app-small">{{ translate("sidebar.build.pickRecipe") }}</span>
-							<p-select
-								[options]="recipeOptions()"
-								optionLabel="label"
-								optionValue="value"
-								[ngModel]="selectedRecipeId()"
-								(ngModelChange)="selectedRecipeId.set($event)"
-								[placeholder]="translate('sidebar.build.pickRecipe')"
-								appendTo="body"
-							/>
-							@if (!isPlacementValid()) {
-								<p-message severity="error">{{ translate('sidebar.build.errors.INVALID_PLACEMENT_LOCATION') }}</p-message>
-							}
-							<div class="row gap-small">
-								<p-button
-									[label]="translate('sidebar.build.confirm')"
-									icon="pi pi-check"
-									severity="success"
-									[disabled]="!selectedRecipeId() || !isPlacementValid()"
-									(onClick)="confirmPlacement()"
-								/>
-								<p-button
-									[label]="translate('sidebar.build.cancel')"
-									icon="pi pi-times"
-									severity="secondary"
-									[outlined]="true"
-									(onClick)="cancelPlacement()"
-								/>
-							</div>
-							@if (placementError()) {
-								<p-message severity="error">{{ translate(placementError()!) }}</p-message>
-							}
-						</div>
+					@if (placementError()) {
+						<p-message severity="error">{{ translate(placementError()!) }}</p-message>
 					}
 				</div>
 			</app-panel>
 
 			<app-panel icon="pi-apple" [title]="translate('sidebar.ingredients')">
-				<ul class="column gap-small app-list">
-					@for (ingredient of ingredientViews(); track ingredient.id) {
-						<li class="row center gap-small">
-							<span>{{ ingredient.name }}</span>
-							<span class="app-muted app-small">({{ ingredient.category }})</span>
-						</li>
-					} @empty {
-						<li class="app-muted">{{ translate("sidebar.noIngredients") }}</li>
-					}
-				</ul>
+				<div class="column gap-small">
+					<app-search-box
+						[placeholder]="translate('search.ingredients')"
+						[ariaLabel]="translate('search.ingredients')"
+						[value]="ingredientFilter()"
+						(valueChange)="ingredientFilter.set($event)"
+					/>
+					<ul class="column gap-small app-list">
+						@for (ingredient of filteredIngredientViews(); track ingredient.id) {
+							<li class="row center gap-small">
+								<span>{{ ingredient.name }}</span>
+								<span class="app-muted app-small">({{ ingredient.category }})</span>
+							</li>
+						} @empty {
+							<li class="app-muted">{{ ingredientFilter() ? translate("search.noMatches") : translate("sidebar.noIngredients") }}</li>
+						}
+					</ul>
+				</div>
 			</app-panel>
 
 			<app-panel icon="pi-book" [title]="translate('sidebar.recipes')">
-				<ul class="column gap-small app-list">
-					@for (recipe of recipeViews(); track recipe.id) {
-						<li class="column gap-small app-recipe">
-							<strong>{{ recipe.name }}</strong>
-							<span class="app-muted app-small">{{ recipe.inputs }} → {{ recipe.outputs }}</span>
-							<span class="app-muted app-small">{{ recipe.operations }}</span>
-						</li>
-					} @empty {
-						<li class="app-muted">{{ translate("sidebar.noRecipes") }}</li>
-					}
-				</ul>
+				<div class="column gap-small">
+					<app-search-box
+						[placeholder]="translate('search.recipes')"
+						[ariaLabel]="translate('search.recipes')"
+						[value]="recipeFilter()"
+						(valueChange)="recipeFilter.set($event)"
+					/>
+					<ul class="column gap-small app-list">
+						@for (recipe of filteredRecipes(); track recipe.id) {
+							<li>
+								<app-recipe-tile
+									[recipe]="recipe"
+									[ingredients]="ingredients()"
+									[operations]="operations()"
+								/>
+							</li>
+						} @empty {
+							<li class="app-muted">{{ recipeFilter() ? translate("search.noMatches") : translate("sidebar.noRecipes") }}</li>
+						}
+					</ul>
+				</div>
 			</app-panel>
 
 			<app-panel icon="pi-truck" [title]="translate('sidebar.gtfsFeeds')">
@@ -117,6 +109,7 @@
 					<li class="row center gap-small"><span class="legend-swatch farmland"></span>{{ translate("sidebar.legendFarmland") }}</li>
 					<li class="row center gap-small"><span class="legend-swatch water"></span>{{ translate("sidebar.legendWater") }}</li>
 					<li class="row center gap-small"><span class="legend-swatch commercial"></span>{{ translate("sidebar.legendCommercial") }}</li>
+					<li class="row center gap-small"><span class="legend-swatch residential"></span>{{ translate("sidebar.legendResidential") }}</li>
 				</ul>
 			</app-panel>
 		</div>
@@ -131,12 +124,38 @@
 		[attr.aria-label]="translate('map.label')"
 	></div>
 
+	<app-recipe-picker-dialog
+		[kind]="pickerKind()"
+		[recipes]="recipes()"
+		[ingredients]="ingredients()"
+		[operations]="operations()"
+		(picked)="onRecipePicked($event)"
+		(cancelled)="onRecipeCancelled()"
+	/>
+
 	<app-factory-operations-drawer
 		[factory]="selectedFactory()"
 		[recipes]="recipes()"
+		[ingredients]="ingredients()"
 		[operations]="operations()"
 		(closed)="closeFactoryPanel()"
 		(reorder)="onReorderOperations($event)"
 	/>
-</div>
 
+	<app-farm-stats-drawer
+		[farm]="selectedFarm()"
+		[recipes]="recipes()"
+		[ingredients]="ingredients()"
+		[operations]="operations()"
+		(closed)="closeFarmPanel()"
+	/>
+
+	<app-restaurant-panel-drawer
+		[restaurant]="selectedRestaurant()"
+		[recipes]="recipes()"
+		[ingredients]="ingredients()"
+		[operations]="operations()"
+		[templates]="restaurantTemplates()"
+		(closed)="closeRestaurantPanel()"
+	/>
+</div>

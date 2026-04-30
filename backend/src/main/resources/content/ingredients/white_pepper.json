@@ -1,0 +1,17 @@
+{
+	"id": "white_pepper",
+	"displayName": {
+		"en": "Ground White Pepper",
+		"zh": "白胡椒粉"
+	},
+	"category": "spice",
+	"shelfLifeMinutes": -1,
+	"refrigeratable": false,
+	"baseValue": 15,
+	"tags": [
+		"seasoning",
+		"non_perishable",
+		"farmable"
+	]
+}
+

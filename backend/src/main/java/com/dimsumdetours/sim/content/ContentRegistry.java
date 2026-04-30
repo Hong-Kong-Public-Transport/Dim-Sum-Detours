@@ -4,6 +4,7 @@ import com.dimsumdetours.sim.model.Ingredient;
 import com.dimsumdetours.sim.model.IngredientCategory;
 import com.dimsumdetours.sim.model.Operation;
 import com.dimsumdetours.sim.model.Recipe;
+import com.dimsumdetours.sim.model.RestaurantTemplate;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.ObjectCollection;
@@ -34,6 +35,9 @@ public final class ContentRegistry {
 		new Object2ObjectLinkedOpenHashMap<>();
 
 	private final Object2ObjectMap<String, Operation> operations =
+		new Object2ObjectLinkedOpenHashMap<>();
+
+	private final Object2ObjectMap<String, RestaurantTemplate> restaurantTemplates =
 		new Object2ObjectLinkedOpenHashMap<>();
 
 	// ─── Ingredient categories ───────────────────────────────────────────────
@@ -127,5 +131,24 @@ public final class ContentRegistry {
 		operations.clear();
 		ingredients.clear();
 		recipes.clear();
+		restaurantTemplates.clear();
+	}
+
+	// ─── Restaurant templates ────────────────────────────────────────────────
+
+	public void putRestaurantTemplate(RestaurantTemplate template) {
+		restaurantTemplates.put(template.id(), template);
+	}
+
+	public Optional<RestaurantTemplate> findRestaurantTemplate(String templateId) {
+		return Optional.ofNullable(restaurantTemplates.get(templateId));
+	}
+
+	public ObjectCollection<RestaurantTemplate> allRestaurantTemplates() {
+		return ObjectCollections.unmodifiable(restaurantTemplates.values());
+	}
+
+	public int restaurantTemplateCount() {
+		return restaurantTemplates.size();
 	}
 }

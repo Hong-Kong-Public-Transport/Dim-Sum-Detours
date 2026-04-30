@@ -1,0 +1,36 @@
+<div
+	*transloco="let translate"
+	class="app-recipe-tile column gap-small"
+	[attr.role]="clickable() ? 'button' : null"
+	[attr.tabindex]="clickable() ? 0 : null"
+	(click)="onActivate()"
+	(keydown.enter)="onActivate()"
+	(keydown.space)="onActivate()"
+>
+	<strong class="app-recipe-tile-name">{{ view().name }}</strong>
+
+	<div class="row gap-small app-recipe-tile-flow">
+		<div class="column gap-small app-recipe-tile-side">
+			<span class="app-muted app-small">{{ translate("recipeTile.inputs") }}</span>
+			@if (view().inputs.length === 0) {
+				<span class="app-muted">—</span>
+			} @else {
+				@for (line of view().inputs; track line.ingredientId) {
+					<span>{{ line.text }}</span>
+				}
+			}
+		</div>
+		<span class="app-recipe-tile-arrow app-muted" aria-hidden="true">→</span>
+		<div class="column gap-small app-recipe-tile-side">
+			<span class="app-muted app-small">{{ translate("recipeTile.outputs") }}</span>
+			@for (line of view().outputs; track line.ingredientId) {
+				<span>{{ line.text }}</span>
+			}
+		</div>
+	</div>
+
+	@if (view().operations) {
+		<span class="app-muted app-small">{{ view().operations }}</span>
+	}
+</div>
+

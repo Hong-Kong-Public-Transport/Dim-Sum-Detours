@@ -8,6 +8,10 @@
 		"resetConfirm": "確定要清空所有資金、建築並從頭開始嗎？",
 		"resetAccept": "確定重設",
 		"resetCancel": "繼續遊玩",
+		"loading": {
+			"gtfs": "正在載入交通資料…",
+			"zones": "正在載入用地分區…"
+		},
 		"clock": {
 			"pause": "暫停",
 			"play": "繼續",
@@ -34,6 +38,7 @@
 		"legendFarmland": "農地",
 		"legendWater": "水域",
 		"legendCommercial": "商業區",
+		"legendResidential": "住宅區",
 		"noIngredients": "尚未載入食材。",
 		"noRecipes": "尚未載入食譜。",
 		"noFeeds": "請將 GTFS .zip 放到 data/gtfs/ 資料夾。",
@@ -56,10 +61,22 @@
 				"INVALID_COORDINATES": "無效的放置位置。",
 				"INVALID_PLACEMENT_LOCATION": "此區域不適合這種建築。",
 				"RECIPE_HAS_NO_OUTPUTS": "此食譜沒有產出。",
+				"TOO_CLOSE_TO_EXISTING_BUILDING": "太接近已存在的同類建築。",
 				"UNKNOWN_BUILDING_KIND": "未知的建築類型。",
 				"UNKNOWN_ERROR": "無法放置建築。"
 			}
 		}
+	},
+	"dialog": {
+		"recipePicker": {
+			"titleFarm": "選擇農場食譜",
+			"titleFactory": "選擇工廠食譜",
+			"empty": "此建築類型暫無可用食譜。"
+		}
+	},
+	"recipeTile": {
+		"inputs": "原料",
+		"outputs": "產出"
 	},
 	"drawer": {
 		"factory": {
@@ -68,14 +85,47 @@
 			"operations": "工序鏈",
 			"moveUp": "上移",
 			"moveDown": "下移"
+		},
+		"farm": {
+			"title": "農場",
+			"recipe": "食譜",
+			"outputIngredient": "產出食材",
+			"ratePerHour": "每遊戲小時產量"
+		},
+		"restaurant": {
+			"title": "餐廳",
+			"recipe": "招牌菜",
+			"reputation": "聲譽",
+			"orders": "待處理訂單",
+			"enqueueTest": "新增測試訂單",
+			"fulfill": "完成",
+			"fulfillTooltip": "立即完成此訂單——支付全額並提升聲譽，略過運送動畫。方便測試之用。",
+			"noOrders": "暫無待處理訂單。",
+			"minutes": "分鐘剩餘"
 		}
 	},
 	"map": {
 		"label": "遊戲地圖",
 		"tooltip": {
 			"farm": "農場",
-			"factory": "工廠"
+			"factory": "工廠",
+			"restaurant": "餐廳",
+			"delivery": "運送中"
 		}
+	},
+	"osm": {
+		"zone": {
+			"park": "公園",
+			"farmland": "農地",
+			"water": "水域",
+			"coastline": "海岸線",
+			"commercial": "商業區",
+			"residential": "住宅區"
+		}
+	},
+	"search": {
+		"ingredients": "搜尋食材…",
+		"recipes": "搜尋食譜…",
+		"noMatches": "沒有符合的結果。"
 	}
 }
-

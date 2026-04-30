@@ -30,6 +30,7 @@ export const GAME_CONSTANTS = Object.freeze({
 			water: Object.freeze({color: "#3a86ff", weight: 1, fillColor: "#3a86ff", fillOpacity: 0.45}),
 			coastline: Object.freeze({color: "#3a86ff", weight: 2, fillOpacity: 0}),
 			commercial: Object.freeze({color: "#9aa0a6", weight: 1, fillColor: "#9aa0a6", fillOpacity: 0.3}),
+			residential: Object.freeze({color: "#e07a5f", weight: 1, fillColor: "#e07a5f", fillOpacity: 0.25}),
 		}),
 	}),
 
@@ -50,8 +51,41 @@ export const GAME_CONSTANTS = Object.freeze({
 		/** Display costs (must mirror backend {@code GameConstants.FARM_BUILD_COST} / {@code FACTORY_BUILD_COST}). */
 		farmBuildCost: 500,
 		factoryBuildCost: 1_500,
+		/**
+		 * Restaurants are NPC-spawned by {@code RestaurantSpawnerService}, not built by the
+		 * player. Cost stays at 0 so a tab refresh that re-runs the spawner doesn't drain the
+		 * wallet. Mirrors backend {@code GameConstants.RESTAURANT_BUILD_COST}.
+		 */
+		restaurantBuildCost: 0,
 		/** Currency prefix shown next to the formatted amount. Phase 3 = whole units. */
 		currencySymbol: "$",
+	}),
+
+	placement: Object.freeze({
+		/**
+		 * Minimum geodesic spacing between any two same-kind buildings, in metres. Mirrors
+		 * backend {@code GameConstants.MIN_BUILDING_SPACING_METERS}; drives the cursor preview
+		 * in {@code placement-validator} so the player sees a "no" cursor before clicking.
+		 */
+		minBuildingSpacingMeters: 100,
+	}),
+
+	spawn: Object.freeze({
+		/** Number of restaurants the auto-spawner drops onto the map once zones load. */
+		restaurantsPerWorld: 6,
+		/** Zone kinds eligible for restaurant auto-spawn. */
+		restaurantZoneKinds: ["residential", "commercial"] as const,
+	}),
+
+	delivery: Object.freeze({
+		/**
+		 * Cargo speed in real-world metres per game-minute. At 1× game speed (1 game-minute
+		 * per real second) this works out to ~10 m/s ≈ a brisk delivery van — fast enough that
+		 * the marker visibly moves at default speed, slow enough that you can still watch it.
+		 */
+		metersPerGameMinute: 600,
+		/** Minimum on-screen lifetime of a delivery marker, in real milliseconds. */
+		minimumDurationMilliseconds: 500,
 	}),
 });
 

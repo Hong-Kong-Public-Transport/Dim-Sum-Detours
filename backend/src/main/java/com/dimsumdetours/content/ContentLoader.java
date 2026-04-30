@@ -58,15 +58,17 @@ public class ContentLoader {
 		loadBuiltinOperations();
 		loadBuiltinIngredients();
 		loadBuiltinRecipes();
+		loadBuiltinRestaurantTemplates();
 
 		loadMods();
 
 		log.info(
-			"Content loaded: {} categories, {} operations, {} ingredients, {} recipes.",
+			"Content loaded: {} categories, {} operations, {} ingredients, {} recipes, {} restaurant templates.",
 			registry.categoryCount(),
 			registry.operationCount(),
 			registry.ingredientCount(),
-			registry.recipeCount());
+			registry.recipeCount(),
+			registry.restaurantTemplateCount());
 	}
 
 	// ─── Built-in classpath loaders ──────────────────────────────────────────
@@ -100,6 +102,12 @@ public class ContentLoader {
 	private void loadBuiltinRecipes() {
 		for (Resource resource : resolveClasspath("recipes")) {
 			readJson(resource, Recipe.class).ifPresent(this::tryPutRecipe);
+		}
+	}
+
+	private void loadBuiltinRestaurantTemplates() {
+		for (Resource resource : resolveClasspath("restaurants")) {
+			readJson(resource, RestaurantTemplate.class).ifPresent(this::tryPutRestaurantTemplate);
 		}
 	}
 
@@ -145,6 +153,7 @@ public class ContentLoader {
 				});
 			loadModSubfolder(modDirectory, "ingredients", Ingredient.class, this::tryPutIngredient);
 			loadModSubfolder(modDirectory, "recipes", Recipe.class, this::tryPutRecipe);
+			loadModSubfolder(modDirectory, "restaurants", RestaurantTemplate.class, this::tryPutRestaurantTemplate);
 		}
 	}
 
@@ -217,6 +226,24 @@ public class ContentLoader {
 			}
 		}
 		registry.putRecipe(recipe);
+	}
+
+	private void tryPutRestaurantTemplate(RestaurantTemplate template) {
+		if (!validateLocalisedName(template.id(), template.displayName())) {
+			return;
+		}
+		if (template.acceptedRecipeIds().isEmpty()) {
+			log.warn("Restaurant template '{}' has no acceptedRecipeIds; skipping.", template.id());
+			return;
+		}
+		for (String recipeId : template.acceptedRecipeIds()) {
+			if (registry.findRecipe(recipeId).isEmpty()) {
+				log.warn("Restaurant template '{}' references unknown recipe '{}'; skipping.",
+					template.id(), recipeId);
+				return;
+			}
+		}
+		registry.putRestaurantTemplate(template);
 	}
 
 	private boolean validateLocalisedName(String id, Map<String, String> displayName) {

@@ -1,0 +1,18 @@
+{
+	"id": "chili_oil",
+	"displayName": {
+		"en": "Chili Oil",
+		"zh": "辣椒油"
+	},
+	"category": "condiment",
+	"shelfLifeMinutes": -1,
+	"refrigeratable": false,
+	"baseValue": 18,
+	"tags": [
+		"seasoning",
+		"non_perishable",
+		"farmable",
+		"spicy"
+	]
+}
+

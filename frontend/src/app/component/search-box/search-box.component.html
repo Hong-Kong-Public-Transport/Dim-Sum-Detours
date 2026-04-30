@@ -1,0 +1,12 @@
+<p-iconfield iconPosition="left" styleClass="app-search-box">
+	<p-inputicon class="pi pi-search" />
+	<input
+		pInputText
+		type="search"
+		[placeholder]="placeholder()"
+		[attr.aria-label]="ariaLabel() || placeholder()"
+		[ngModel]="value()"
+		(ngModelChange)="value.set($event)"
+	/>
+</p-iconfield>
+

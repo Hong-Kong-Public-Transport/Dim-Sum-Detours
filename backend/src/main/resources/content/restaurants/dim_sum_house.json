@@ -1,0 +1,22 @@
+{
+	"id": "dim_sum_house",
+	"displayName": {
+		"en": "Dim Sum House",
+		"zh": "點心軒"
+	},
+	"acceptedRecipeIds": [
+		"cha_siu_bao",
+		"har_gow",
+		"siu_mai"
+	],
+	"basePatienceMinutes": 240,
+	"basePayout": 900,
+	"tags": [
+		"cantonese",
+		"tier_1",
+		"dim_sum"
+	]
+}
+
+
+

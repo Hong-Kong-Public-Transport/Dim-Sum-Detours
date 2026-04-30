@@ -1,0 +1,24 @@
+{
+	"id": "press_chili_oil",
+	"displayName": {
+		"en": "Press Chili Oil",
+		"zh": "壓榨辣椒油"
+	},
+	"inputs": [],
+	"operations": [
+		"grow"
+	],
+	"outputs": [
+		{
+			"ingredientId": "chili_oil",
+			"quantity": 2
+		}
+	],
+	"minimumFactoryTier": 1,
+	"operationDurationMinutes": 50,
+	"tags": [
+		"farm",
+		"raw"
+	]
+}
+

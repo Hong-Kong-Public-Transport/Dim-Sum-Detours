@@ -8,6 +8,10 @@
 		"resetConfirm": "Wipe your wallet, all placed buildings, and start over?",
 		"resetAccept": "Yes, reset",
 		"resetCancel": "Keep playing",
+		"loading": {
+			"gtfs": "Loading transit data…",
+			"zones": "Loading placement zones…"
+		},
 		"clock": {
 			"pause": "Pause",
 			"play": "Resume",
@@ -34,6 +38,7 @@
 		"legendFarmland": "Farmland",
 		"legendWater": "Water",
 		"legendCommercial": "Commercial",
+		"legendResidential": "Residential",
 		"noIngredients": "No ingredients loaded.",
 		"noRecipes": "No recipes loaded.",
 		"noFeeds": "Drop a GTFS .zip into data/gtfs/.",
@@ -56,10 +61,22 @@
 				"INVALID_COORDINATES": "Invalid placement location.",
 				"INVALID_PLACEMENT_LOCATION": "This zone doesn't fit the building type.",
 				"RECIPE_HAS_NO_OUTPUTS": "This recipe has no outputs.",
+				"TOO_CLOSE_TO_EXISTING_BUILDING": "Too close to an existing same-kind building.",
 				"UNKNOWN_BUILDING_KIND": "Unknown building kind.",
 				"UNKNOWN_ERROR": "Could not place the building."
 			}
 		}
+	},
+	"dialog": {
+		"recipePicker": {
+			"titleFarm": "Pick a farm recipe",
+			"titleFactory": "Pick a factory recipe",
+			"empty": "No recipes available for this building type."
+		}
+	},
+	"recipeTile": {
+		"inputs": "Inputs",
+		"outputs": "Outputs"
 	},
 	"drawer": {
 		"factory": {
@@ -68,14 +85,47 @@
 			"operations": "Operation chain",
 			"moveUp": "Move up",
 			"moveDown": "Move down"
+		},
+		"farm": {
+			"title": "Farm",
+			"recipe": "Recipe",
+			"outputIngredient": "Output ingredient",
+			"ratePerHour": "Output per game-hour"
+		},
+		"restaurant": {
+			"title": "Restaurant",
+			"recipe": "House dish",
+			"reputation": "Reputation",
+			"orders": "Pending orders",
+			"enqueueTest": "New test order",
+			"fulfill": "Fulfill",
+			"fulfillTooltip": "Instantly complete this order — pays out the full price and bumps reputation, skipping the delivery animation. Useful for testing.",
+			"noOrders": "No pending orders.",
+			"minutes": "min left"
 		}
 	},
 	"map": {
 		"label": "Game map",
 		"tooltip": {
 			"farm": "Farm",
-			"factory": "Factory"
+			"factory": "Factory",
+			"restaurant": "Restaurant",
+			"delivery": "Delivery in transit"
 		}
+	},
+	"osm": {
+		"zone": {
+			"park": "Park",
+			"farmland": "Farmland",
+			"water": "Water",
+			"coastline": "Coastline",
+			"commercial": "Commercial zone",
+			"residential": "Residential zone"
+		}
+	},
+	"search": {
+		"ingredients": "Search ingredients…",
+		"recipes": "Search recipes…",
+		"noMatches": "No matches."
 	}
 }
-

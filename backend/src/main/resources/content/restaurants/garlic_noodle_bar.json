@@ -1,0 +1,21 @@
+{
+	"id": "garlic_noodle_bar",
+	"displayName": {
+		"en": "Garlic Noodle Bar",
+		"zh": "蒜香麵館"
+	},
+	"acceptedRecipeIds": [
+		"garlic_rice",
+		"garlic_salt",
+		"har_gow"
+	],
+	"basePatienceMinutes": 180,
+	"basePayout": 500,
+	"tags": [
+		"fusion",
+		"tier_1"
+	]
+}
+
+
+

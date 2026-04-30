@@ -1,0 +1,17 @@
+{
+	"id": "siu_mai",
+	"displayName": {
+		"en": "Siu Mai",
+		"zh": "燒賣"
+	},
+	"category": "processed",
+	"shelfLifeMinutes": 240,
+	"refrigeratable": true,
+	"baseValue": 65,
+	"tags": [
+		"dim_sum",
+		"steamed",
+		"perishable"
+	]
+}
+

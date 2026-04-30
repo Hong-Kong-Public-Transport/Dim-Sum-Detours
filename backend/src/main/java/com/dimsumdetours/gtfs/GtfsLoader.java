@@ -53,8 +53,8 @@ public class GtfsLoader {
 		}
 		Collection<File> zips = FileUtils.listFiles(dir, new String[]{"zip"}, false);
 		ObjectList<String> names = new ObjectArrayList<>(zips.size());
-		for (File f : zips) {
-			names.add(f.getName());
+		for (File file : zips) {
+			names.add(file.getName());
 		}
 		return names;
 	}
@@ -74,8 +74,8 @@ public class GtfsLoader {
 			Thread.ofVirtual().name("gtfs-load-" + name).start(() -> {
 				try {
 					placeholder.complete(parseFeed(name));
-				} catch (Throwable t) {
-					placeholder.completeExceptionally(t);
+				} catch (Throwable ex) {
+					placeholder.completeExceptionally(ex);
 				}
 			});
 			return placeholder;
@@ -86,8 +86,9 @@ public class GtfsLoader {
 		} catch (Exception ex) {
 			// Evict the failed future so future calls can retry instead of inheriting the failure.
 			feedCache.remove(fileName, future);
-			Throwable cause = (ex instanceof java.util.concurrent.CompletionException ce && ce.getCause() != null)
-				? ce.getCause() : ex;
+			Throwable cause = (ex instanceof java.util.concurrent.CompletionException completionException
+				&& completionException.getCause() != null)
+				? completionException.getCause() : ex;
 			if (cause instanceof Exception checked) {
 				throw checked;
 			}
@@ -101,17 +102,17 @@ public class GtfsLoader {
 			throw new IllegalArgumentException("GTFS feed not found: " + fileName);
 		}
 		log.info("Parsing GTFS feed '{}'…", fileName);
-		GtfsRelationalDaoImpl dao = new GtfsRelationalDaoImpl();
+		GtfsRelationalDaoImpl gtfsRelationalDao = new GtfsRelationalDaoImpl();
 		GtfsReader reader = new GtfsReader();
 		reader.setInputLocation(file);
-		reader.setEntityStore(dao);
+		reader.setEntityStore(gtfsRelationalDao);
 		reader.run();
 		log.info("Loaded GTFS feed '{}': {} stops, {} routes, {} trips",
 			fileName,
-			dao.getAllStops().size(),
-			dao.getAllRoutes().size(),
-			dao.getAllTrips().size());
-		return dao;
+			gtfsRelationalDao.getAllStops().size(),
+			gtfsRelationalDao.getAllRoutes().size(),
+			gtfsRelationalDao.getAllTrips().size());
+		return gtfsRelationalDao;
 	}
 
 	/**
@@ -121,13 +122,13 @@ public class GtfsLoader {
 	 * @throws IllegalStateException if the feed has no stops with valid coordinates.
 	 */
 	public BoundingBox computeBoundingBox(String fileName) throws Exception {
-		GtfsRelationalDaoImpl dao = loadFeed(fileName);
+		GtfsRelationalDaoImpl gtfsRelationalDao = loadFeed(fileName);
 		double south = Double.POSITIVE_INFINITY;
 		double west = Double.POSITIVE_INFINITY;
 		double north = Double.NEGATIVE_INFINITY;
 		double east = Double.NEGATIVE_INFINITY;
 		boolean any = false;
-		for (Stop stop : dao.getAllStops()) {
+		for (Stop stop : gtfsRelationalDao.getAllStops()) {
 			double lat = stop.getLat();
 			double lon = stop.getLon();
 			if (lat == 0.0 && lon == 0.0) {

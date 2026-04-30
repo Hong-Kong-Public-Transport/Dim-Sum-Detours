@@ -11,4 +11,3 @@ public sealed interface PlacementResult {
 	record Failure(PlacementError error) implements PlacementResult {
 	}
 }
-

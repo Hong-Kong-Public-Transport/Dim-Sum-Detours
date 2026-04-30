@@ -1,0 +1,13 @@
+.app-muted {
+	color: var(--p-text-muted-color);
+}
+
+.app-small {
+	font-size: 0.8rem;
+}
+
+:host ::ng-deep .app-farm-drawer {
+	width: 22rem;
+	max-width: 100vw;
+}
+

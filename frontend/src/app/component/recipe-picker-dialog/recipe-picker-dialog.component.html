@@ -1,0 +1,37 @@
+<p-dialog
+	*transloco="let translate"
+	[visible]="visible()"
+	(visibleChange)="onVisibleChange($event)"
+	[modal]="true"
+	[closable]="true"
+	[draggable]="false"
+	[resizable]="false"
+	[dismissableMask]="true"
+	[header]="kind() === 'FARM' ? translate('dialog.recipePicker.titleFarm') : translate('dialog.recipePicker.titleFactory')"
+	styleClass="app-recipe-picker"
+>
+	@if (choices().length === 0) {
+		<p class="app-muted">{{ translate("dialog.recipePicker.empty") }}</p>
+	} @else {
+		<div class="column gap-small app-recipe-picker-list">
+			<app-search-box
+				[placeholder]="translate('search.recipes')"
+				[ariaLabel]="translate('search.recipes')"
+				[value]="filter()"
+				(valueChange)="filter.set($event)"
+			/>
+			@for (recipe of visibleChoices(); track recipe.id) {
+				<app-recipe-tile
+					[recipe]="recipe"
+					[ingredients]="ingredients()"
+					[operations]="operations()"
+					[clickable]="true"
+					(picked)="pick($event)"
+				/>
+			} @empty {
+				<p class="app-muted">{{ translate("search.noMatches") }}</p>
+			}
+		</div>
+	}
+</p-dialog>
+

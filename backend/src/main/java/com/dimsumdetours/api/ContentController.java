@@ -5,6 +5,7 @@ import com.dimsumdetours.sim.model.Ingredient;
 import com.dimsumdetours.sim.model.IngredientCategory;
 import com.dimsumdetours.sim.model.Operation;
 import com.dimsumdetours.sim.model.Recipe;
+import com.dimsumdetours.sim.model.RestaurantTemplate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -87,6 +88,22 @@ public class ContentController {
 	public Mono<ResponseEntity<Recipe>> getRecipe(@PathVariable String recipeId) {
 		return Mono.fromCallable(() -> registry.findRecipe(recipeId)
 				.<ResponseEntity<Recipe>>map(ResponseEntity::ok)
+				.orElseGet(() -> ResponseEntity.notFound().build()))
+			.subscribeOn(Schedulers.boundedElastic());
+	}
+
+	// ─── Restaurant templates ────────────────────────────────────────────────
+
+	@GetMapping("/restaurants")
+	public Flux<RestaurantTemplate> listRestaurantTemplates() {
+		return Flux.defer(() -> Flux.fromIterable(registry.allRestaurantTemplates()))
+			.subscribeOn(Schedulers.boundedElastic());
+	}
+
+	@GetMapping("/restaurants/{templateId}")
+	public Mono<ResponseEntity<RestaurantTemplate>> getRestaurantTemplate(@PathVariable String templateId) {
+		return Mono.fromCallable(() -> registry.findRestaurantTemplate(templateId)
+				.<ResponseEntity<RestaurantTemplate>>map(ResponseEntity::ok)
 				.orElseGet(() -> ResponseEntity.notFound().build()))
 			.subscribeOn(Schedulers.boundedElastic());
 	}

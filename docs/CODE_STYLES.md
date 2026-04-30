@@ -52,6 +52,19 @@ makes refactor-rename across the file trivial.
 - **Transloco i18n keys**: `camelCase`. Same no-abbreviation rule as identifiers
   (`sidebar.build.placeFactory`, **not** `sidebar.build.placeFct`).
 
+### 1.4 British English in prose, American English in identifiers
+
+- All Markdown docs (`README.md`, `docs/*.md`) and all source-code comments use **British
+  English**: `colour`, `behaviour`, `centre`, `localise`, `organise`, `analyse`.
+- All code identifiers — class names, method names, variable names, signal names, i18n keys,
+  JSON content `id` fields, CSS class names — use **American English**: `color`, `behavior`,
+  `center`, `localize`, `organize`, `analyze`.
+
+The split keeps player-facing copy (`en` is British English per the *Tech Stack* table in the
+README) consistent with Hong Kong / UK readers, while keeping API and code identifiers on the
+de-facto American convention every framework and library already uses (`localStorage`,
+`Color`, `behavior` events, …). When in doubt: prose-British, code-American.
+
 ## 2. Formatting
 
 ### 2.1 Indentation
@@ -79,20 +92,10 @@ this.httpClient.get<Building[]>("/api/game/buildings")
 ```
 
 ```java
-return Mono.fromCallable(() ->registry.
-
-findRecipe(recipeId))
-	.
-
-subscribeOn(Schedulers.boundedElastic())
-	.
-
-map(ResponseEntity::ok)
-	.
-
-defaultIfEmpty(ResponseEntity.notFound().
-
-build());
+return Mono.fromCallable(() -> registry.findRecipe(recipeId))
+	.subscribeOn(Schedulers.boundedElastic())
+	.map(ResponseEntity::ok)
+	.defaultIfEmpty(ResponseEntity.notFound().build());
 ```
 
 Each chained call gets its own line, indented one tab beyond the receiver.
@@ -111,30 +114,17 @@ this.gameService.placeBuilding(
 ```java
 return new BuildingDto(
 	building.id(),
-	building.
-
-kind().
-
-name(),
-	building.
-
-lat(),
-	building.
-
-lon(),
-	building.
-
-recipeId(),
-	building.
-
-outputIngredientId(),
-
-operations
-);
+	building.kind().name(),
+	building.lat(),
+	building.lon(),
+	building.recipeId(),
+	building.outputIngredientId(),
+	operations);
 ```
 
 The opening paren is on the call line; arguments are indented one tab; the closing paren
-sits at the original indent level on its own line.
+sits at the original indent level on its own line (or with the last argument, like the Java
+example above).
 
 ### 2.3 Trailing newline
 
@@ -150,10 +140,43 @@ Every file ends with **exactly one** trailing newline (one blank line at EOF, no
 
 ### 2.5 Imports
 
-- Group external packages first, then internal modules, separated by a blank line.
-- Within a group, alphabetical by module path.
-- No re-export barrels (`index.ts`) unless absolutely necessary; prefer direct imports so
-  refactor tools can move files cleanly.
+Group imports by **origin**, separated by a blank line. Within each group, sort
+**alphabetically by module path**. The same rule applies to the `imports: [...]` array in
+every Angular `@Component({ ... })` decorator — keep it alphabetised so additions land at
+a predictable spot.
+
+The grouping order, top to bottom (skip groups that don't apply):
+
+1. **Angular framework** — `@angular/*`.
+2. **Third-party / external packages** — `@jsverse/transloco`, `leaflet`, `primeng/*`, `rxjs`, …
+3. **Internal modules** — `../core/...`, `../component/...`, anything under `src/app/`.
+
+```ts
+import {ChangeDetectionStrategy, Component, inject} from "@angular/core";
+import {FormsModule} from "@angular/forms";
+
+import {TranslocoDirective} from "@jsverse/transloco";
+import {ButtonModule} from "primeng/button";
+import {DialogModule} from "primeng/dialog";
+
+import {GAME_CONSTANTS} from "../../core/constant/game.constants";
+import {RecipeTileComponent} from "../recipe-tile/recipe-tile.component";
+```
+
+No re-export barrels (`index.ts`) unless absolutely necessary; prefer direct imports so
+refactor tools can move files cleanly.
+
+### 2.6 No dead SCSS
+
+Every selector in a component's `.scss` file must match a class actually used by the matching
+`.html` file — or be referenced by runtime-injected DOM (Leaflet markers, PrimeNG drawer
+overlays). When a rule targets runtime DOM, leave a comment naming the source so the next
+reader doesn't assume it's dead and delete it; see `frontend/src/styles.scss` for the
+`.building-marker` block as the canonical example.
+
+When you remove markup, delete the now-orphaned SCSS in the same change. Run
+`ng build --configuration=production` periodically — the production CSS extractor surfaces
+unused rules through bundle-size growth.
 
 ## 3. Architecture
 
@@ -204,8 +227,8 @@ ingredient category badges).
 ### 3.6 Tooltips on icon-only affordances
 
 Every icon-only button (no visible label) MUST have a `pTooltip` describing its action. Same
-for any icon plotted on the map without a textual label (building markers, shipment glyphs).
-The tooltip text must come from the i18n bundle, not be hardcoded.
+for any icon plotted on the map without a textual label (building markers, shipment glyphs,
+OSM placement zones). The tooltip text must come from the i18n bundle, not be hardcoded.
 
 ### 3.7 Lombok everywhere it cleans things up
 
@@ -249,10 +272,25 @@ not fastutil's `ObjectList`).
   `LANGUAGE_LABELS` in `core/constant/game.constants.ts` — language names always render in
   their own native script regardless of the active locale, so they're code, not translatable
   text.
-- Adding a key in `en.json` without adding it to `zh.json` is a bug — the resolver falls
-  back to English at runtime, but the build should still ship both.
+- **Translation-key parity is mandatory.** Every key present in `en.json` must also be present
+  in `zh.json` (and any future locale). The resolver falls back to English at runtime, but a
+  missing key in a locale file is a bug — review the diff before merging. A simple guard:
+  `jq -r 'paths(scalars) | join(".")' en.json zh.json | sort -u | …` should produce identical
+  key lists.
 
-### 3.11 Style guides
+### 3.11 Locale-aware UI formatting
+
+All numbers, dates, times, and currency-amount renderings must adapt to the **browser's
+locale** (`navigator.language`), not the active translation language. Reach for the
+helpers in `frontend/src/app/core/utility/format-locale.ts` (`formatMoney`,
+`formatNumber`, `formatDate`, `formatTime`) — they wrap `Intl.NumberFormat` /
+`Intl.DateTimeFormat` and accept an optional explicit `locale` for tests.
+
+The currency **symbol** stays a literal `$` (lifted from `GAME_CONSTANTS.economy.currencySymbol`).
+We don't pretend to convert exchange rates; only the *formatting* (decimal separator,
+thousand separator, date order) follows the player's locale.
+
+### 3.12 Style guides
 
 - Angular: follow https://angular.dev/style-guide — standalone components, signals over
   RxJS where possible, `input()` / `output()` instead of `@Input` / `@Output` decorators,
@@ -262,7 +300,7 @@ not fastutil's `ObjectList`).
 - TypeScript: idiomatic ES2024+ — `const` by default, `readonly` on every interface field,
   template literal types where they buy clarity, `satisfies` over type assertion.
 
-### 3.12 Resolve all IDE warnings
+### 3.13 Resolve all IDE warnings
 
 Treat compiler / IntelliJ / TS-Server / ESLint warnings as errors. If a warning is genuinely
 not applicable, suppress it locally with the narrowest possible annotation

@@ -8,7 +8,8 @@ import com.dimsumdetours.config.GameConstants;
  */
 public enum BuildingKind {
 	FARM(GameConstants.FARM_BUILD_COST, GameConstants.FARM_DAILY_UPKEEP),
-	FACTORY(GameConstants.FACTORY_BUILD_COST, GameConstants.FACTORY_DAILY_UPKEEP);
+	FACTORY(GameConstants.FACTORY_BUILD_COST, GameConstants.FACTORY_DAILY_UPKEEP),
+	RESTAURANT(GameConstants.RESTAURANT_BUILD_COST, GameConstants.RESTAURANT_DAILY_UPKEEP);
 
 	private final Money buildCost;
 	private final Money dailyUpkeep;
@@ -26,4 +27,3 @@ public enum BuildingKind {
 		return dailyUpkeep;
 	}
 }
-

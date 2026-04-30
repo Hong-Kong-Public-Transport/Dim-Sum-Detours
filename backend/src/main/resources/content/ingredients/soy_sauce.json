@@ -1,0 +1,17 @@
+{
+	"id": "soy_sauce",
+	"displayName": {
+		"en": "Soy Sauce",
+		"zh": "豉油"
+	},
+	"category": "condiment",
+	"shelfLifeMinutes": -1,
+	"refrigeratable": false,
+	"baseValue": 12,
+	"tags": [
+		"seasoning",
+		"non_perishable",
+		"farmable"
+	]
+}
+

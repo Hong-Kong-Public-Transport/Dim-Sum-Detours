@@ -96,3 +96,104 @@ html, body {
 	padding-left: 0.5rem;
 	padding-right: 0.5rem;
 }
+
+// Building markers: a coloured circular pill with a PrimeIcon glyph centred inside.
+//
+// Lives at the global level (not in `map.component.scss`) because Leaflet appends the
+// `divIcon` DOM at runtime — those nodes lack Angular's view-encapsulation `_ngcontent-*`
+// attribute, so component-scoped rules never match them.
+//
+// Leaflet's default `.leaflet-div-icon` class adds `background: #fff` and a
+// `border: 1px solid #666`; reset both, then layer our colours on top.
+.building-marker {
+	box-sizing: border-box;
+	width: 28px;
+	height: 28px;
+	background: transparent;
+	border: none;
+	border-radius: 50%;
+	color: white;
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+
+	// Centre the glyph using line-height equal to the wrapper height — the standard
+	// vertical-centring trick for icon-font glyphs whose intrinsic baseline isn't centred.
+	.pi {
+		display: block;
+		width: 100%;
+		height: 100%;
+		font-size: 16px;
+		line-height: 28px;
+		text-align: center;
+	}
+
+	&.farm {
+		background: #3fa34d;
+	}
+
+	&.factory {
+		background: #6c757d;
+		cursor: pointer;
+	}
+
+	&.restaurant {
+		background: #d62828;
+		cursor: pointer;
+	}
+}
+
+// Delivery markers: smaller pill that animates between source and restaurant. Same global-
+// scope rationale as `.building-marker` — Leaflet appends the DOM at runtime.
+.delivery-marker {
+	box-sizing: border-box;
+	width: 22px;
+	height: 22px;
+	background: #f4a261;
+	border: 2px solid white;
+	border-radius: 50%;
+	color: white;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+
+	.pi {
+		display: block;
+		width: 100%;
+		height: 100%;
+		font-size: 12px;
+		line-height: 18px;
+		text-align: center;
+	}
+}
+
+// PrimeNG drawers default to a viewport-fixed panel that sits *above* the toolbar. We want
+// every right-edge drawer in this app to slide in over the map only — so it doesn't cover
+// the wallet, clock, or language picker. Constrain to below the toolbar (PrimeNG's
+// p-toolbar measures roughly 4rem tall with default chrome). All three drawer
+// styleClasses are listed explicitly so future modal drawers (settings, help) keep their
+// default full-height behaviour.
+.p-drawer.app-restaurant-drawer,
+.p-drawer.app-farm-drawer,
+.p-drawer.app-factory-drawer {
+	top: 4rem !important;
+	height: calc(100vh - 4rem) !important;
+}
+
+// Leaflet sets `cursor: pointer` on every `.leaflet-interactive` SVG path, which makes
+// every OSM zone look clickable even when there's nothing to click. Inherit the map's
+// own cursor instead — the build-mode rules in `map.component.scss` then take over via
+// `.app-map.build-cursor-…`.
+.leaflet-interactive {
+	cursor: inherit;
+}
+
+// Build-mode cursors must propagate down to interactive SVG paths too, otherwise hovering
+// a zone reverts to the path's own pointer cursor on some browsers (Leaflet's stroke style
+// pins it). The double selector below is intentional.
+.app-map.build-cursor-valid,
+.app-map.build-cursor-valid .leaflet-interactive {
+	cursor: crosshair;
+}
+
+.app-map.build-cursor-invalid,
+.app-map.build-cursor-invalid .leaflet-interactive {
+	cursor: not-allowed;
+}
+

@@ -1,0 +1,13 @@
+// Picker tiles render via `<app-recipe-tile [clickable]="true">`; this file just sizes the
+// scrollable list container.
+.app-recipe-picker-list {
+	min-width: 22rem;
+	max-height: 60vh;
+	overflow-y: auto;
+}
+
+.app-muted {
+	color: var(--p-text-muted-color);
+}
+
+

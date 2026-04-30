@@ -8,4 +8,3 @@ export interface ClockSnapshot {
 	readonly speed: number;
 	readonly playing: boolean;
 }
-

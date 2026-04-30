@@ -1,5 +1,5 @@
 /** Mirrors {@code com.dimsumdetours.sim.model.BuildingKind}. */
-export type BuildingKind = "FARM" | "FACTORY";
+export type BuildingKind = "FARM" | "FACTORY" | "RESTAURANT";
 
 /** Mirrors {@code com.dimsumdetours.api.GameController.BuildingDto}. */
 export interface Building {
@@ -14,6 +14,10 @@ export interface Building {
 	 * harvest/grow step (read-only). For factories this can be reordered by the player.
 	 */
 	readonly operations?: readonly string[];
+	/** Phase 6: 0.0–1.0 reputation. Populated only for {@code kind === "RESTAURANT"}. */
+	readonly reputation?: number | null;
+	/** Phase 6: id of the {@code RestaurantTemplate} this restaurant was placed from. */
+	readonly templateId?: string | null;
 }
 
 export interface PlaceBuildingRequest {
@@ -21,6 +25,7 @@ export interface PlaceBuildingRequest {
 	readonly lat: number;
 	readonly lon: number;
 	readonly recipeId: string;
+	readonly templateId?: string | null;
 }
 
 export interface BalanceResponse {
@@ -37,4 +42,3 @@ export interface PlaceBuildingResponse {
 	readonly error: string | null;
 	readonly requiredAmount: number | null;
 }
-

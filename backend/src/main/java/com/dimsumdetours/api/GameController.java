@@ -1,11 +1,16 @@
 package com.dimsumdetours.api;
 
+import com.dimsumdetours.engine.OrderGenerator;
+import com.dimsumdetours.engine.SimulationEngine;
 import com.dimsumdetours.sim.model.Building;
 import com.dimsumdetours.sim.model.BuildingKind;
 import com.dimsumdetours.sim.model.Factory;
 import com.dimsumdetours.sim.model.Money;
+import com.dimsumdetours.sim.model.Order;
+import com.dimsumdetours.sim.model.OrderEvent;
 import com.dimsumdetours.sim.model.PlacementError;
 import com.dimsumdetours.sim.model.PlacementResult;
+import com.dimsumdetours.sim.model.Restaurant;
 import com.dimsumdetours.sim.state.GameState;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
@@ -20,6 +25,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.net.URI;
@@ -39,6 +45,8 @@ import java.util.UUID;
 public class GameController {
 
 	private final GameState gameState;
+	private final SimulationEngine engine;
+	private final OrderGenerator orderGenerator;
 
 	@GetMapping("/balance")
 	public Mono<BalanceResponse> getBalance() {
@@ -63,7 +71,8 @@ public class GameController {
 					new PlaceBuildingResponse(null, null, "UNKNOWN_BUILDING_KIND", null));
 			}
 
-			PlacementResult result = gameState.placeBuilding(kind, request.lat(), request.lon(), request.recipeId());
+			PlacementResult result = gameState.placeBuilding(
+				kind, request.lat(), request.lon(), request.recipeId(), request.templateId());
 			if (result instanceof PlacementResult.Success success) {
 				BuildingDto dto = BuildingDto.from(success.building());
 				return ResponseEntity
@@ -114,7 +123,71 @@ public class GameController {
 	 */
 	@PostMapping("/reset")
 	public Mono<ResponseEntity<Void>> resetGame() {
-		return Mono.fromRunnable(gameState::reset).thenReturn(ResponseEntity.noContent().<Void>build());
+		return Mono.fromRunnable(() -> {
+			gameState.reset();
+			orderGenerator.reset();
+		}).thenReturn(ResponseEntity.noContent().<Void>build());
+	}
+
+	// ─── Phase 6: restaurant orders ───────────────────────────────────────
+
+	@GetMapping("/orders")
+	public Mono<List<OrderDto>> listAllOrders() {
+		return Mono.fromSupplier(() -> gameState.listAllOrders().stream().map(OrderDto::from).toList());
+	}
+
+	@GetMapping("/restaurants/{id}/orders")
+	public Mono<List<OrderDto>> listOrdersForRestaurant(@PathVariable UUID id) {
+		return Mono.fromSupplier(() -> gameState.listOrders(id).stream().map(OrderDto::from).toList());
+	}
+
+	@PostMapping("/restaurants/{id}/orders")
+	public Mono<ResponseEntity<OrderDto>> enqueueOrder(
+		@PathVariable UUID id,
+		@RequestBody EnqueueOrderRequest request
+	) {
+		return Mono.fromSupplier(() -> gameState
+			.enqueueOrder(id, request.recipeId(), request.quantity(), request.patienceGameMinutes())
+			.map(order -> {
+				engine.publishOrderEvent(new OrderEvent.Enqueued(order, gameState.getClockSnapshot().gameMinutes()));
+				return ResponseEntity.status(HttpStatus.CREATED).body(OrderDto.from(order));
+			})
+			.orElseGet(() -> ResponseEntity.notFound().<OrderDto>build()));
+	}
+
+	@PostMapping("/restaurants/{restaurantId}/orders/{orderId}/fulfill")
+	public Mono<ResponseEntity<FulfillOrderResponse>> fulfillOrder(
+		@PathVariable UUID restaurantId,
+		@PathVariable UUID orderId
+	) {
+		return Mono.fromSupplier(() -> gameState
+			.fulfillOrder(restaurantId, orderId)
+			.map(outcome -> {
+				engine.publishOrderEvent(new OrderEvent.Fulfilled(
+					orderId,
+					restaurantId,
+					outcome.result(),
+					outcome.payout(),
+					outcome.newBalance(),
+					outcome.newReputation(),
+					gameState.getClockSnapshot().gameMinutes()));
+				return ResponseEntity.ok(new FulfillOrderResponse(
+					outcome.result().name(),
+					outcome.payout(),
+					outcome.newBalance(),
+					outcome.newReputation()));
+			})
+			.orElseGet(() -> ResponseEntity.notFound().<FulfillOrderResponse>build()));
+	}
+
+	/**
+	 * Server-sent stream of order lifecycle events (enqueued / fulfilled / expired). Mirrors
+	 * the {@code /clock/stream} pattern; the frontend's {@code RestaurantService} subscribes
+	 * to it and reflects the events into its {@code _orders} signal.
+	 */
+	@GetMapping(path = "/orders/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+	public Flux<OrderEvent> orderStream() {
+		return engine.orderStream();
 	}
 
 	// ─── DTOs ───────────────────────────────────────────────────────────────
@@ -129,10 +202,14 @@ public class GameController {
 		double lon,
 		String recipeId,
 		@Nullable String outputIngredientId,
-		@Nullable List<String> operations
+		@Nullable List<String> operations,
+		@Nullable Double reputation,
+		@Nullable String templateId
 	) {
 		public static BuildingDto from(Building building) {
 			List<String> ops = (building instanceof Factory factory) ? factory.operations() : null;
+			Double reputation = (building instanceof Restaurant restaurant) ? restaurant.reputation() : null;
+			String templateId = (building instanceof Restaurant restaurant) ? restaurant.templateId() : null;
 			return new BuildingDto(
 				building.id(),
 				building.kind().name(),
@@ -140,15 +217,43 @@ public class GameController {
 				building.lon(),
 				building.recipeId(),
 				building.outputIngredientId(),
-				ops);
+				ops,
+				reputation,
+				templateId);
 		}
+	}
+
+	public record OrderDto(
+		UUID id,
+		UUID restaurantId,
+		String recipeId,
+		int quantity,
+		long createdAtGameMinutes,
+		long deadlineGameMinutes
+	) {
+		public static OrderDto from(Order order) {
+			return new OrderDto(
+				order.id(),
+				order.restaurantId(),
+				order.recipeId(),
+				order.quantity(),
+				order.createdAtGameMinutes(),
+				order.deadlineGameMinutes());
+		}
+	}
+
+	public record EnqueueOrderRequest(String recipeId, int quantity, long patienceGameMinutes) {
+	}
+
+	public record FulfillOrderResponse(String result, long payout, long newBalance, double newReputation) {
 	}
 
 	public record PlaceBuildingRequest(
 		String kind,
 		double lat,
 		double lon,
-		String recipeId
+		String recipeId,
+		@Nullable String templateId
 	) {
 	}
 
@@ -163,4 +268,3 @@ public class GameController {
 	) {
 	}
 }
-

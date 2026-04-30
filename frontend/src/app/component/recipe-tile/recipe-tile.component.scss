@@ -1,0 +1,46 @@
+// Visual chrome only — flex layout comes from utility classes on the host markup.
+.app-recipe-tile {
+	padding: 0.6rem 0.75rem;
+	border-radius: 6px;
+	border: 1px solid var(--p-content-border-color);
+	background: var(--p-content-background);
+}
+
+// When `clickable` is set the host gets `app-recipe-tile-clickable`; we promote the inner
+// card to button-like affordances (cursor, hover background, focus ring).
+:host(.app-recipe-tile-clickable) .app-recipe-tile {
+	cursor: pointer;
+	transition: background 120ms ease;
+
+	&:hover, &:focus-visible {
+		background: var(--p-content-hover-background);
+		outline: none;
+	}
+
+	&:focus-visible {
+		box-shadow: 0 0 0 2px var(--p-primary-color);
+	}
+}
+
+.app-recipe-tile-flow {
+	align-items: flex-start;
+}
+
+.app-recipe-tile-side {
+	flex: 1 1 0;
+	min-width: 0;
+}
+
+.app-recipe-tile-arrow {
+	align-self: center;
+	font-size: 1.1rem;
+}
+
+.app-muted {
+	color: var(--p-text-muted-color);
+}
+
+.app-small {
+	font-size: 0.8rem;
+}
+

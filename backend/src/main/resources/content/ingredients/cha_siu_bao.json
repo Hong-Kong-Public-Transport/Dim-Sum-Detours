@@ -1,0 +1,17 @@
+{
+	"id": "cha_siu_bao",
+	"displayName": {
+		"en": "Cha Siu Bao",
+		"zh": "叉燒包"
+	},
+	"category": "processed",
+	"shelfLifeMinutes": 360,
+	"refrigeratable": true,
+	"baseValue": 60,
+	"tags": [
+		"dim_sum",
+		"steamed",
+		"perishable"
+	]
+}
+

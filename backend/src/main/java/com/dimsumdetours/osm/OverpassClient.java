@@ -38,7 +38,7 @@ import java.nio.file.StandardCopyOption;
 public class OverpassClient {
 
 	/** Bump when {@link #OVERPASS_QL_TEMPLATE} changes so old caches are ignored. */
-	private static final String CACHE_VERSION = "v1";
+	private static final String CACHE_VERSION = "v2";
 
 	private static final String OVERPASS_QL_TEMPLATE = """
 		[out:json][timeout:60];
@@ -48,10 +48,12 @@ public class OverpassClient {
 		  way["natural"="water"](%1$s);
 		  way["natural"="coastline"](%1$s);
 		  way["landuse"="commercial"](%1$s);
+		  way["landuse"="residential"](%1$s);
 		  relation["leisure"="park"](%1$s);
 		  relation["landuse"="farmland"](%1$s);
 		  relation["natural"="water"](%1$s);
 		  relation["landuse"="commercial"](%1$s);
+		  relation["landuse"="residential"](%1$s);
 		);
 		out geom;
 		""";
