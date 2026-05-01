@@ -1,0 +1,42 @@
+<p-drawer
+	*transloco="let translate"
+	[visible]="visible()"
+	(visibleChange)="onVisibleChange($event)"
+	position="right"
+	[header]="translate('drawer.robot.title')"
+	[modal]="false"
+	[dismissible]="true"
+	styleClass="app-robot-drawer"
+>
+	@if (view(); as robot) {
+		<div class="column gap">
+			<div class="column gap-small">
+				<span class="app-muted app-small">{{ translate("drawer.robot.cargo") }}</span>
+				@if (robot.cargo.length === 0) {
+					<span class="app-muted">—</span>
+				} @else {
+					<ul class="cargo-list">
+						@for (line of robot.cargo; track line.ingredientId) {
+							<li>
+								<strong>{{ line.quantity }}×</strong> {{ line.displayName }}
+							</li>
+						}
+					</ul>
+				}
+			</div>
+			<div class="column gap-small">
+				<span class="app-muted app-small">{{ translate("drawer.robot.source") }}</span>
+				<span>{{ robot.sourceName }}</span>
+			</div>
+			<div class="column gap-small">
+				<span class="app-muted app-small">{{ translate("drawer.robot.destination") }}</span>
+				<span>{{ robot.destinationName }}</span>
+			</div>
+			<div class="column gap-small">
+				<span class="app-muted app-small">{{ translate("drawer.robot.eta") }}</span>
+				<strong>{{ robot.etaMinutes }} min · {{ robot.progressPercent }}%</strong>
+			</div>
+		</div>
+	}
+</p-drawer>
+

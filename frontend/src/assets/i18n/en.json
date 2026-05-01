@@ -83,6 +83,13 @@
 			"title": "Factory",
 			"recipe": "Recipe",
 			"operations": "Operation chain",
+			"producedTotal": "Produced (total)",
+			"refrigeration": "Refrigeration",
+			"refrigeratedActive": "Refrigerated — cargo is fresh out of the gate",
+			"refrigerateUpgrade": "Refrigerate ($2,000)",
+			"refrigerateTooltip": "Pause the spoilage clock on cargo dispatched from this factory. Unlocked once you've completed the Cold Chain milestone.",
+			"inputsTitle": "Inputs on hand",
+			"inputsStalled": "Stalled — awaiting input deliveries",
 			"moveUp": "Move up",
 			"moveDown": "Move down"
 		},
@@ -90,18 +97,25 @@
 			"title": "Farm",
 			"recipe": "Recipe",
 			"outputIngredient": "Output ingredient",
-			"ratePerHour": "Output per game-hour"
+			"ratePerHour": "Output per game-hour",
+			"producedTotal": "Produced (total)"
 		},
 		"restaurant": {
 			"title": "Restaurant",
 			"recipe": "House dish",
 			"reputation": "Reputation",
 			"orders": "Pending orders",
-			"enqueueTest": "New test order",
-			"fulfill": "Fulfill",
-			"fulfillTooltip": "Instantly complete this order — pays out the full price and bumps reputation, skipping the delivery animation. Useful for testing.",
+			"fulfilled": "Fulfilled (lifetime)",
+			"awaitingSupply": "Awaiting supply",
 			"noOrders": "No pending orders.",
 			"minutes": "min left"
+		},
+		"robot": {
+			"title": "Robot",
+			"cargo": "Cargo",
+			"source": "From",
+			"destination": "To",
+			"eta": "ETA"
 		}
 	},
 	"map": {
@@ -110,7 +124,11 @@
 			"farm": "Farm",
 			"factory": "Factory",
 			"restaurant": "Restaurant",
-			"delivery": "Delivery in transit"
+			"deliveryWalking": "Walker on foot",
+			"deliveryBoarded": "Walker boarded a bus",
+			"deliverySpoiled": "Delivery spoiled in transit",
+			"robot": "Robot in transit",
+			"robotSpoiled": "Robot's cargo spoiled in transit"
 		}
 	},
 	"osm": {
@@ -127,5 +145,35 @@
 		"ingredients": "Search ingredients…",
 		"recipes": "Search recipes…",
 		"noMatches": "No matches."
+	},
+	"milestone": {
+		"firstDelivery": {
+			"title": "Milestone: First Delivery",
+			"detail": "Your first dish reached a hungry customer. The loop is closed."
+		},
+		"coldChain": {
+			"title": "Milestone: Cold Chain",
+			"detail": "A perishable cargo arrived fresh. Refrigerated factories are now available."
+		},
+		"neighbourhoodHero": {
+			"title": "Milestone: Neighbourhood Hero",
+			"detail": "Three or more open restaurants are basking in 80%+ reputation."
+		},
+		"verticalIntegration": {
+			"title": "Milestone: Vertical Integration",
+			"detail": "You own the full chain — farm, factory, and restaurant — for one recipe."
+		},
+		"cuisineMaster": {
+			"title": "Milestone: Cuisine Master",
+			"detail": "Every recipe in a cuisine has been served. Prestige dishes await."
+		},
+		"transitTycoon": {
+			"title": "Milestone: Transit Tycoon",
+			"detail": "Ten distinct GTFS routes are carrying your shipments at once."
+		},
+		"cityBuilder": {
+			"title": "Soft Win: City Builder",
+			"detail": "The city has grown around your supply chain. A teaser of greater things to come — Phase 9 will turn this into a proper win condition."
+		}
 	}
 }

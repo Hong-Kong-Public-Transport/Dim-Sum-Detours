@@ -139,4 +139,63 @@ public final class GameConstants {
 	 * Capacity (in ingredient units) of the starting vehicle — a horse cart.
 	 */
 	public static final int STARTING_VEHICLE_CAPACITY = 5;
+
+	// ─────────────────────────────────────────────────────────────────────────────
+	// Phase 8: walker model + refrigeration + milestones
+	// ─────────────────────────────────────────────────────────────────────────────
+	/**
+	 * Base walking speed of an autonomous ingredient-walker, in metres per game-minute.
+	 * Bus legs along a routed path use the GTFS-driven travel time directly so they're much
+	 * faster — that's the README's "ingredients walk slowly but can take a bus to speed up"
+	 * promise. Mirrored in the frontend's {@code GAME_CONSTANTS.walker.metersPerGameMinute}.
+	 */
+	public static final double WALKER_METERS_PER_GAME_MINUTE = 80.0;
+
+	/**
+	 * Speed multiplier applied to the bus leg of a walker's path, relative to the base walk
+	 * speed. The frontend uses this to allocate proportional time to the middle leg of a
+	 * 4-waypoint GTFS-stop route (source → stop → stop → dest), so the marker noticeably
+	 * accelerates between the two stops.
+	 */
+	public static final double WALKER_BUS_SPEED_MULTIPLIER = 6.0;
+
+	/**
+	 * Phase-12 robot model: casual-biking speed in metres per game-minute. 10 km/h
+	 * physical → ~167 m / 60 s; we round to 170 to match the existing convention where
+	 * 1 game-minute is treated as one wall-clock minute for speed math (the legacy
+	 * walker constant 80 m/game-min ≈ 4.8 km/h followed the same convention). Slower
+	 * than a bus, faster than the deprecated walker — robots feel like couriers, not
+	 * pedestrians. Mirrored on the frontend in {@code GAME_CONSTANTS.robot.metersPerGameMinute}.
+	 */
+	public static final double ROBOT_METERS_PER_GAME_MINUTE = 170.0;
+
+	/**
+	 * Phase-12 dispatcher heuristic: how many full per-cycle input sets a factory will
+	 * stockpile before the dispatcher stops topping it up. A value of 2 keeps roughly
+	 * one cycle's worth on hand plus a buffer so the line doesn't stall the moment a
+	 * walker leaves with the last unit.
+	 */
+	public static final int FACTORY_RESTOCK_TARGET_CYCLES = 2;
+
+	/**
+	 * One-off cost to upgrade a factory to refrigerated. Pauses the cargo's spoilage clock
+	 * while finished units sit in the factory between cycle completion and dispatch — the
+	 * "Cold Chain" milestone unlocks the upgrade. The fee is non-refundable on demolish.
+	 */
+	public static final long REFRIGERATION_UPGRADE_COST = 2_000L;
+
+	/**
+	 * City-Builder soft-win threshold: cumulative number of fulfilled orders across the whole
+	 * map. Hit it and the milestone modal pops a celebratory teaser — a real win condition
+	 * (district unlocks, population threshold per the README) is a Phase-9 concern.
+	 */
+	public static final long CITY_BUILDER_FULFILLED_ORDER_TARGET = 50L;
+
+	/**
+	 * Sliding window (in game-minutes) used by the Transit Tycoon milestone tracker. Counts
+	 * how many distinct GTFS routes carried at least one shipment within the window; ten
+	 * concurrent routes trips the milestone.
+	 */
+	public static final long TRANSIT_TYCOON_WINDOW_GAME_MINUTES = 1_440L;
+	public static final int TRANSIT_TYCOON_DISTINCT_ROUTE_TARGET = 10;
 }

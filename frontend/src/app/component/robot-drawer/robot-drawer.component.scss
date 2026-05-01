@@ -1,0 +1,23 @@
+.app-muted {
+	color: var(--p-text-muted-color);
+}
+
+.app-small {
+	font-size: 0.8rem;
+}
+
+.cargo-list {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+
+	li {
+		padding: 0.25rem 0;
+	}
+}
+
+:host ::ng-deep .app-robot-drawer {
+	width: 22rem;
+	max-width: 100vw;
+}
+

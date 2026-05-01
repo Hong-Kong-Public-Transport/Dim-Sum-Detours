@@ -33,3 +33,21 @@
 	width: 22rem;
 	max-width: 100vw;
 }
+
+.app-input-list {
+	list-style: none;
+}
+
+.app-input-row {
+	padding: 0.35rem 0.5rem;
+	border-radius: 4px;
+	background: var(--p-content-hover-background, rgba(0, 0, 0, 0.04));
+}
+
+// Phase-10: highlight an input row whose stockpile is below the per-cycle requirement,
+// so the player notices at a glance which ingredient the factory is starved on. Same
+// warm-orange the awaiting-supply hint uses on the restaurant drawer.
+.app-input-low {
+	color: #c0670c;
+	font-weight: 500;
+}

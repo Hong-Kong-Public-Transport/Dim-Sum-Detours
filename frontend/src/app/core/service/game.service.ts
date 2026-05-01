@@ -98,7 +98,30 @@ export class GameService {
 	}
 
 	/**
+	 * Phase-8 task 6: spend the refrigeration upgrade fee on a placed factory. The local
+	 * buildings + balance signals are patched on success. The HTTP layer surfaces a 402
+	 * PAYMENT_REQUIRED via the standard {@code HttpErrorResponse} when the wallet can't
+	 * cover the cost; the caller decides whether to surface a toast.
+	 */
+	refrigerateFactory(buildingId: string): Observable<Building> {
+		return this.httpClient
+			.post<Building>(`/api/game/buildings/${encodeURIComponent(buildingId)}/refrigerate`, {})
+			.pipe(
+				tap((updated) => {
+					this._buildings.update((list) =>
+						list.map((building) => building.id === updated.id ? updated : building),
+					);
+					this.refreshBalance().subscribe({error: () => undefined});
+				}),
+			);
+	}
+
+
+	/**
 	 * Wipes server-side state and resets local signals to the starting balance / empty list.
+	 * Vehicle clearing is handled by {@link VehicleService}, which subscribes to
+	 * {@link resetCount} via the consumer (the map component) — keeping reset choreography
+	 * out of the wallet/buildings service.
 	 */
 	resetGame(): Observable<void> {
 		return this.httpClient.post<void>("/api/game/reset", {}).pipe(

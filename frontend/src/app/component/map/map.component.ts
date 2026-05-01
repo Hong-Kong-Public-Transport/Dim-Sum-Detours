@@ -17,7 +17,6 @@ import {Operation, Recipe} from "../../core/model/recipe.model";
 import {RestaurantTemplate} from "../../core/model/restaurant-template.model";
 import {ClockService} from "../../core/service/clock.service";
 import {ContentService} from "../../core/service/content.service";
-import {DeliveryAnimation, DeliveryService} from "../../core/service/delivery.service";
 import {GameService} from "../../core/service/game.service";
 import {GtfsService} from "../../core/service/gtfs.service";
 import {LanguageService} from "../../core/service/language.service";
@@ -25,6 +24,9 @@ import {OsmService} from "../../core/service/osm.service";
 import {RestaurantService} from "../../core/service/restaurant.service";
 import {RestaurantSpawnerService} from "../../core/service/restaurant-spawner.service";
 import {ThemeService} from "../../core/service/theme.service";
+import {VehicleService} from "../../core/service/vehicle.service";
+import type {Vehicle} from "../../core/model/vehicle.model";
+import {RobotPixiLayer} from "../../core/service/robot-pixi-layer";
 import {formatMoney} from "../../core/utility/format-locale";
 import {isValidPlacement, respectsSpacing} from "../../core/utility/placement-validator";
 import {FactoryOperationsDrawerComponent} from "../factory-operations-drawer/factory-operations-drawer.component";
@@ -33,6 +35,7 @@ import {PanelComponent} from "../panel/panel.component";
 import {RecipePickerDialogComponent} from "../recipe-picker-dialog/recipe-picker-dialog.component";
 import {RecipeTileComponent} from "../recipe-tile/recipe-tile.component";
 import {RestaurantPanelDrawerComponent} from "../restaurant-panel-drawer/restaurant-panel-drawer.component";
+import {RobotDrawerComponent} from "../robot-drawer/robot-drawer.component";
 import {SearchBoxComponent} from "../search-box/search-box.component";
 
 interface IngredientView {
@@ -61,6 +64,7 @@ interface FeedOption {
 		RecipePickerDialogComponent,
 		RecipeTileComponent,
 		RestaurantPanelDrawerComponent,
+		RobotDrawerComponent,
 		SearchBoxComponent,
 		SelectModule,
 		TooltipModule,
@@ -74,7 +78,6 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 	private readonly mapElement = viewChild.required<ElementRef<HTMLDivElement>>("mapElement");
 	private readonly clockService = inject(ClockService);
 	private readonly contentService = inject(ContentService);
-	private readonly deliveryService = inject(DeliveryService);
 	private readonly gameService = inject(GameService);
 	private readonly gtfsService = inject(GtfsService);
 	private readonly osmService = inject(OsmService);
@@ -82,6 +85,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 	private readonly restaurantService = inject(RestaurantService);
 	private readonly restaurantSpawner = inject(RestaurantSpawnerService);
 	private readonly themeService = inject(ThemeService);
+	private readonly vehicleService = inject(VehicleService);
 	private readonly translocoService = inject(TranslocoService);
 
 	protected readonly ingredients = signal<readonly Ingredient[]>([]);
@@ -103,6 +107,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 	protected readonly selectedFactoryId = signal<string | null>(null);
 	protected readonly selectedFarmId = signal<string | null>(null);
 	protected readonly selectedRestaurantId = signal<string | null>(null);
+	protected readonly selectedRobotId = signal<string | null>(null);
 
 	/** Sidebar/dialog filter strings. Plain substring filter over the localised name. */
 	protected readonly ingredientFilter = signal<string>("");
@@ -183,11 +188,38 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 		return this.buildings().find((candidate) => candidate.id === restaurantId) ?? null;
 	});
 
+	/** Currently-selected in-flight robot, exposed to the right-edge robot drawer. The
+	 * computed re-derives off {@link VehicleService.vehicles} so an arrival event (which
+	 * removes the entry from that map) auto-closes this drawer. */
+	protected readonly selectedRobot = computed<Vehicle | null>(() => {
+		const id = this.selectedRobotId();
+		if (!id) {
+			return null;
+		}
+		return this.vehicleService.vehicles().get(id) ?? null;
+	});
+
 	private leafletMap?: Leaflet.Map;
 	private tileLayer?: Leaflet.TileLayer;
 	private placementLayer?: Leaflet.GeoJSON;
 	private buildingsLayer?: Leaflet.LayerGroup;
-	private deliveriesLayer?: Leaflet.LayerGroup;
+	/** Phase-12: WebGL-backed robot overlay. Rendered on its own Pixi container so
+	 * the moving badges don't trash Leaflet's DOM marker pane every frame. */
+	private robotLayer?: RobotPixiLayer;
+	/** Per-building Leaflet marker reference. Lets us update the production-progress CSS
+	 * variable each tick without recreating the marker (which would clobber tooltips +
+	 * any in-flight click handlers). */
+	private readonly buildingMarkers = new Map<string, Leaflet.Marker>();
+	/** Cached "closed" flag per restaurant marker so we can detect when the icon HTML needs
+	 * a full rebuild (close-state changes the colour, no other live property affects the SVG). */
+	private readonly markerClosedState = new Map<string, boolean>();
+	/** Cached "stalled" flag per factory marker — see {@link markerClosedState}. */
+	private readonly markerStalledState = new Map<string, boolean>();
+	/** Last wall-clock millisecond on which {@link gameService#refreshBuildings} ran;
+	 * gates the polling effect so the producedUnits counter on the farm/factory drawers
+	 * stays live without spamming the backend on every clock SSE frame (or — worse —
+	 * scaling the poll rate with game speed). */
+	private lastBuildingsRefreshWallMs = 0;
 
 	constructor() {
 		effect(() => {
@@ -205,14 +237,88 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 			this.loadFeedLayers(feed);
 		});
 
+		// Diff the building list against the existing marker map: remove markers whose
+		// building was demolished, add markers for newly-placed buildings, and replace
+		// markers whose closed-state changed (changes the icon colour). We do NOT recreate
+		// markers on production-cycle ticks — those are pushed via a CSS variable so the
+		// click handler / tooltip stay attached.
 		effect(() => {
 			const list = this.buildings();
-			if (!this.leafletMap || !this.buildingsLayer) {
+			const layer = this.buildingsLayer;
+			if (!this.leafletMap || !layer) {
 				return;
 			}
-			this.buildingsLayer.clearLayers();
+			const liveIds = new Set<string>();
 			for (const building of list) {
-				this.buildingsLayer.addLayer(this.makeBuildingMarker(building));
+				liveIds.add(building.id);
+				const newClosed = (building.kind === "RESTAURANT" && building.closed) === true;
+				const newStalled = (building.kind === "FACTORY" && building.stalled) === true;
+				const existing = this.buildingMarkers.get(building.id);
+				if (!existing) {
+					const marker = this.makeBuildingMarker(building);
+					this.buildingMarkers.set(building.id, marker);
+					this.markerClosedState.set(building.id, newClosed);
+					this.markerStalledState.set(building.id, newStalled);
+					layer.addLayer(marker);
+					continue;
+				}
+				const closedChanged = this.markerClosedState.get(building.id) !== newClosed;
+				const stalledChanged = this.markerStalledState.get(building.id) !== newStalled;
+				if (closedChanged || stalledChanged) {
+					layer.removeLayer(existing);
+					const marker = this.makeBuildingMarker(building);
+					this.buildingMarkers.set(building.id, marker);
+					this.markerClosedState.set(building.id, newClosed);
+					this.markerStalledState.set(building.id, newStalled);
+					layer.addLayer(marker);
+				}
+			}
+			for (const [id, marker] of this.buildingMarkers) {
+				if (!liveIds.has(id)) {
+					layer.removeLayer(marker);
+					this.buildingMarkers.delete(id);
+					this.markerClosedState.delete(id);
+					this.markerStalledState.delete(id);
+				}
+			}
+		});
+
+		// Phase-8: every game-clock tick, push the current production-cycle progress onto
+		// each farm/factory marker via a CSS variable. The marker's `.production-ring` child
+		// reads the variable to size its conic-gradient sweep — no Angular re-render needed.
+		effect(() => {
+			const now = this.clockService.snapshot().gameMinutes;
+			for (const building of this.buildings()) {
+				if (building.kind === "RESTAURANT") {
+					continue;
+				}
+				const marker = this.buildingMarkers.get(building.id);
+				if (!marker) {
+					continue;
+				}
+				const cycleStart = building.cycleStartedAtGameMinutes ?? 0;
+				const duration = building.cycleDurationGameMinutes ?? 0;
+				if (duration <= 0) {
+					continue;
+				}
+				const elapsed = Math.max(0, now - cycleStart);
+				const progress = (elapsed % duration) / duration;
+				const element = marker.getElement();
+				if (element) {
+					element.style.setProperty("--progress", `${progress}`);
+				}
+			}
+			// Phase-13: refresh /api/game/buildings on a *wall-clock* cadence — every 2
+			// seconds of real time, regardless of game speed. The previous game-minute
+			// bucket was problematic at 256× speed (a "1 game-minute" bucket fires
+			// every ~4ms wall-clock and floods the backend). Wall-clock pacing keeps
+			// the load constant; the producedUnits counter visibly increments because
+			// at 1× speed a 10-game-min farm cycle finishes in 10 real seconds, well
+			// inside the 2s polling window.
+			const wallNow = Date.now();
+			if (wallNow - this.lastBuildingsRefreshWallMs >= 2000) {
+				this.lastBuildingsRefreshWallMs = wallNow;
+				this.gameService.refreshBuildings().subscribe({error: () => undefined});
 			}
 		});
 
@@ -223,13 +329,11 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 			this.refreshZoneTooltips();
 		});
 
-		// Redraw the delivery markers whenever either the active animations or the game-clock
-		// changes — the marker's lat/lon is interpolated off the elapsed game minutes.
-		effect(() => {
-			const animations = this.deliveryService.animations();
-			const snapshot = this.clockService.snapshot();
-			this.redrawDeliveries(animations, snapshot.gameMinutes);
-		});
+		// Phase-12: robot rendering is owned by RobotPixiLayer (PixiJS overlay) which
+		// drives its own RAF loop and reads {@link VehicleService.vehicles} +
+		// {@link ClockService.snapshot} via the callbacks supplied at construction.
+		// No per-clock-tick redraw effect needed — the WebGL surface keeps animating
+		// even between sim ticks.
 
 		// Auto-spawn restaurants once both placement zones and templates are available. The
 		// spawner itself guards against repeat invocation and re-arms on game reset.
@@ -265,6 +369,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 	}
 
 	ngOnDestroy(): void {
+		this.robotLayer?.destroy();
 		this.leafletMap?.remove();
 	}
 
@@ -314,12 +419,28 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 		this.selectedRestaurantId.set(null);
 	}
 
+	protected closeRobotPanel(): void {
+		this.selectedRobotId.set(null);
+	}
+
 	protected onReorderOperations(newOperations: readonly string[]): void {
 		const factoryId = this.selectedFactoryId();
 		if (!factoryId) {
 			return;
 		}
 		this.gameService.updateFactoryOperations(factoryId, newOperations).subscribe({error: () => undefined});
+	}
+
+	/** Phase-9 beta-polish: spend the refrigeration upgrade fee on the currently-open
+	 * factory. The drawer surfaces a 402 (broke) silently — the player just keeps seeing
+	 * the upgrade button. A 404 also collapses to no-op since the drawer would close on
+	 * the next building-list refresh anyway. */
+	protected onRefrigerateFactory(): void {
+		const factoryId = this.selectedFactoryId();
+		if (!factoryId) {
+			return;
+		}
+		this.gameService.refrigerateFactory(factoryId).subscribe({error: () => undefined});
 	}
 
 	private initializeMap(): void {
@@ -339,7 +460,25 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 		}).addTo(this.leafletMap);
 
 		this.buildingsLayer = Leaflet.layerGroup().addTo(this.leafletMap);
-		this.deliveriesLayer = Leaflet.layerGroup().addTo(this.leafletMap);
+		this.robotLayer = new RobotPixiLayer(this.leafletMap, {
+			currentVehicles: () => this.vehicleService.vehicles(),
+			// Phase-13: read the wall-clock-extrapolated game-minute (not the stepped
+			// per-tick snapshot) so the RAF loop interpolates robot positions smoothly
+			// between server SSE frames. The signal-backed `snapshot().gameMinutes`
+			// only updates every SIM_TICK_MILLIS = 100ms, which makes 60fps motion look
+			// stuttery; `liveGameMinutes()` is recomputed off `performance.now()`
+			// each frame and stays signal-free so it doesn't churn change detection.
+			currentGameMinutes: () => this.clockService.liveGameMinutes(),
+			resolvePosition: (vehicle, gameMinutes) =>
+				this.vehicleService.interpolatePosition(vehicle, gameMinutes),
+			onRobotClick: (vehicleId) => {
+				this.selectedFactoryId.set(null);
+				this.selectedFarmId.set(null);
+				this.selectedRestaurantId.set(null);
+				this.selectedRobotId.set(vehicleId);
+			},
+		});
+		this.robotLayer.start();
 
 		this.leafletMap.on("click", (event) => {
 			const kind = this.buildMode();
@@ -362,6 +501,11 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 				next: () => {
 					this.buildMode.set(null);
 					this.selectedRecipeId.set(null);
+					// Phase-13: removed the auto-resume-on-first-placement behaviour. Players
+					// reported it as surprising — if they paused deliberately to plan a
+					// layout, they want the clock to stay paused until they explicitly hit
+					// play. The clock controls remain the single source of truth for
+					// playing-vs-paused.
 				},
 				error: (error: {error?: {error?: string | null} | null} | null) => {
 					const code = error?.error?.error ?? "UNKNOWN_ERROR";
@@ -388,9 +532,17 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 	private makeBuildingMarker(building: Building): Leaflet.Marker {
 		const cssKind = MapComponent.cssClassFor(building.kind);
 		const iconClass = MapComponent.iconClassFor(building.kind);
+		const closedSuffix = (building.kind === "RESTAURANT" && building.closed) ? " closed" : "";
+		const stalledSuffix = (building.kind === "FACTORY" && building.stalled) ? " stalled" : "";
+		// Phase-8: farms / factories carry a `.production-ring` overlay whose conic-gradient
+		// sweep is driven by the `--progress` CSS variable. Restaurants don't produce so they
+		// skip the ring entirely.
+		const ringHtml = (building.kind === "RESTAURANT")
+			? ""
+			: `<span class="production-ring" aria-hidden="true"></span>`;
 		const icon = Leaflet.divIcon({
-			className: `building-marker ${cssKind}`,
-			html: `<i class="pi ${iconClass}" aria-hidden="true"></i>`,
+			className: `building-marker ${cssKind}${closedSuffix}${stalledSuffix}`,
+			html: `${ringHtml}<i class="pi ${iconClass}" aria-hidden="true"></i>`,
 			iconSize: [28, 28],
 			iconAnchor: [14, 14],
 		});
@@ -550,34 +702,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 	}
 
 	/**
-	 * Redraw every active delivery marker. Position is interpolated linearly between source
-	 * and destination, parameterised by elapsed game minutes — the resulting marker speed
-	 * automatically scales with the game-clock speed multiplier.
+	 * Phase-12: redraw is handled by {@link RobotPixiLayer}; this method intentionally
+	 * removed. Kept as a comment marker so a future search for "redrawVehicles" surfaces
+	 * the migration note rather than a dangling dead method.
 	 */
-	private redrawDeliveries(animations: readonly DeliveryAnimation[], gameMinutes: number): void {
-		const layer = this.deliveriesLayer;
-		if (!layer) {
-			return;
-		}
-		layer.clearLayers();
-		for (const animation of animations) {
-			const total = Math.max(1, animation.arrivesAtGameMinutes - animation.startedAtGameMinutes);
-			const elapsed = Math.max(0, gameMinutes - animation.startedAtGameMinutes);
-			const progress = Math.max(0, Math.min(1, elapsed / total));
-			const lat = animation.fromLat + (animation.toLat - animation.fromLat) * progress;
-			const lon = animation.fromLon + (animation.toLon - animation.fromLon) * progress;
-			const icon = Leaflet.divIcon({
-				className: "delivery-marker",
-				html: `<i class="pi pi-truck" aria-hidden="true"></i>`,
-				iconSize: [22, 22],
-				iconAnchor: [11, 11],
-			});
-			const tooltipText = this.translocoService.translate("map.tooltip.delivery");
-			Leaflet.marker([lat, lon], {icon, title: tooltipText})
-				.bindTooltip(tooltipText, {direction: "top", offset: [0, -8]})
-				.addTo(layer);
-		}
-	}
 }
 
 /** Minimal shape Leaflet hands to the {@code onEachFeature} callback for our zones. */

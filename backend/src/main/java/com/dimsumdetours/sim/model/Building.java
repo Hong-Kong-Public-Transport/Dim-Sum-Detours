@@ -30,4 +30,25 @@ public sealed interface Building permits Farm, Factory, Restaurant {
 	default @Nullable String outputIngredientId() {
 		return null;
 	}
+
+	/**
+	 * Phase-8 production cycle anchor (game-minute the current cycle started). {@code -1} for
+	 * non-producing buildings (Restaurants).
+	 */
+	default long cycleStartedAtGameMinutes() {
+		return -1L;
+	}
+
+	/**
+	 * Phase-8 production cycle duration in game-minutes. {@code 0} for non-producing
+	 * buildings (Restaurants); always positive otherwise.
+	 */
+	default long cycleDurationGameMinutes() {
+		return 0L;
+	}
+
+	/** Phase-8 lifetime production count for this building. */
+	default long producedUnits() {
+		return 0L;
+	}
 }

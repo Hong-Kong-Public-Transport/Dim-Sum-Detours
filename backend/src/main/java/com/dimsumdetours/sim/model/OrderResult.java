@@ -10,6 +10,8 @@ public enum OrderResult {
 	/** Delivered after the deadline — discounted payout, reputation down. */
 	LATE,
 	/** Never delivered; the order timed out. Reputation hit, no payout. */
-	EXPIRED
+	EXPIRED,
+	/** Delivered, but the cargo's freshness clock ran out in transit. Reputation hit, no payout. */
+	SPOILED
 }
 

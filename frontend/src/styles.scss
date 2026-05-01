@@ -114,6 +114,7 @@ html, body {
 	border-radius: 50%;
 	color: white;
 	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+	position: relative;
 
 	// Centre the glyph using line-height equal to the wrapper height — the standard
 	// vertical-centring trick for icon-font glyphs whose intrinsic baseline isn't centred.
@@ -124,6 +125,28 @@ html, body {
 		font-size: 16px;
 		line-height: 28px;
 		text-align: center;
+		position: relative;
+		z-index: 1;
+	}
+
+	// Phase-8 production-progress ring. A conic-gradient sweep sized by the `--progress`
+	// CSS variable that the map component pushes onto the marker DOM each game-clock tick.
+	// The radial-gradient mask carves out the centre so only a thin ring remains around
+	// the building glyph. Smooth `transition` keeps the sweep visually fluid even when
+	// the underlying signal-driven update lands at the SSE clock cadence.
+	.production-ring {
+		position: absolute;
+		inset: -3px;
+		border-radius: 50%;
+		background: conic-gradient(
+			from -90deg,
+			rgba(255, 255, 255, 0.95) calc(var(--progress, 0) * 360deg),
+			rgba(255, 255, 255, 0.18) 0
+		);
+		mask: radial-gradient(circle, transparent 56%, black 60%);
+		-webkit-mask: radial-gradient(circle, transparent 56%, black 60%);
+		transition: background 120ms linear;
+		pointer-events: none;
 	}
 
 	&.farm {
@@ -139,19 +162,45 @@ html, body {
 		background: #d62828;
 		cursor: pointer;
 	}
+
+	// Phase 7: a restaurant whose reputation dropped below the close threshold. Greyed
+	// out + reduced opacity so the player sees at a glance which spots are no longer
+	// generating orders. Combines with the kind class (`.building-marker.restaurant.closed`).
+	&.restaurant.closed {
+		background: #6b6b6b;
+		opacity: 0.55;
+		cursor: pointer;
+		filter: grayscale(0.8);
+	}
+
+	// Phase-12: a factory whose input stockpile can't cover one full cycle. The cog icon
+	// is desaturated and the production-ring sweep is hidden — visually conveying
+	// "nothing is happening here, supply more inputs". The drawer's stockpile section
+	// already explains why; this is the at-a-glance signal on the map.
+	&.factory.stalled {
+		filter: grayscale(0.7);
+		opacity: 0.7;
+
+		.production-ring {
+			display: none;
+		}
+	}
 }
 
-// Delivery markers: smaller pill that animates between source and restaurant. Same global-
-// scope rationale as `.building-marker` — Leaflet appends the DOM at runtime.
-.delivery-marker {
+// Phase-12 robot markers: cute autonomous-courier pills that animate between source and
+// destination. Server is the source of truth — the frontend just renders {@link Vehicle}
+// records served off `/api/game/vehicles/stream`. Same global-scope rationale as
+// `.building-marker` (Leaflet appends the DOM at runtime).
+.vehicle-marker {
 	box-sizing: border-box;
 	width: 22px;
 	height: 22px;
-	background: #f4a261;
+	background: #6c8cff;
 	border: 2px solid white;
 	border-radius: 50%;
 	color: white;
-	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+	box-shadow: 0 0 0 2px rgba(108, 140, 255, 0.25), 0 1px 3px rgba(0, 0, 0, 0.4);
+	transition: transform 0.1s linear;
 
 	.pi {
 		display: block;
@@ -160,6 +209,21 @@ html, body {
 		font-size: 12px;
 		line-height: 18px;
 		text-align: center;
+	}
+
+	// The robot subtype is the only concrete vehicle today; future Bus / Train subtypes
+	// will get their own pill colour. Kept as a separate selector so the cascade is
+	// explicit when those land.
+	&.robot {
+		background: #6c8cff;
+	}
+
+	// Phase-7 spoilage: cargo's freshness clock ran out in transit. Dark red pill so the
+	// player sees the failure before the robot even reaches the destination.
+	&.spoiled {
+		background: #8a1c1c;
+		border-color: #ffd6d6;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 	}
 }
 
@@ -171,7 +235,8 @@ html, body {
 // default full-height behaviour.
 .p-drawer.app-restaurant-drawer,
 .p-drawer.app-farm-drawer,
-.p-drawer.app-factory-drawer {
+.p-drawer.app-factory-drawer,
+.p-drawer.app-robot-drawer {
 	top: 4rem !important;
 	height: calc(100vh - 4rem) !important;
 }

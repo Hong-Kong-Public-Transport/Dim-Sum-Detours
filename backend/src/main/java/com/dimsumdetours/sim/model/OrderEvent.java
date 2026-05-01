@@ -1,5 +1,8 @@
 package com.dimsumdetours.sim.model;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+
 import java.util.UUID;
 
 /**
@@ -7,7 +10,24 @@ import java.util.UUID;
  * Sealed so subscribers can pattern-match exhaustively.
  *
  * <p>Lives in the framework-agnostic {@code sim/} package — no Spring imports.
+ *
+ * <p>Phase-13 fix: annotated with {@link JsonTypeInfo} so Jackson emits a {@code "type"}
+ * discriminator on the wire. The frontend's {@code RestaurantService.applyEvent}
+ * switches on {@code event.type}; without the discriminator every event was silently
+ * dropped, so restaurants appeared not to receive any orders even though the generator
+ * was successfully enqueueing them server-side.
  */
+@JsonTypeInfo(
+	use = JsonTypeInfo.Id.NAME,
+	include = JsonTypeInfo.As.PROPERTY,
+	property = "type",
+	visible = true
+)
+@JsonSubTypes({
+	@JsonSubTypes.Type(value = OrderEvent.Enqueued.class, name = "ENQUEUED"),
+	@JsonSubTypes.Type(value = OrderEvent.Fulfilled.class, name = "FULFILLED"),
+	@JsonSubTypes.Type(value = OrderEvent.Expired.class, name = "EXPIRED")
+})
 public sealed interface OrderEvent {
 
 	String type();

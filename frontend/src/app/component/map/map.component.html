@@ -140,6 +140,7 @@
 		[operations]="operations()"
 		(closed)="closeFactoryPanel()"
 		(reorder)="onReorderOperations($event)"
+		(refrigerateRequested)="onRefrigerateFactory()"
 	/>
 
 	<app-farm-stats-drawer
@@ -157,5 +158,12 @@
 		[operations]="operations()"
 		[templates]="restaurantTemplates()"
 		(closed)="closeRestaurantPanel()"
+	/>
+
+	<app-robot-drawer
+		[robot]="selectedRobot()"
+		[buildings]="buildings()"
+		[ingredients]="ingredients()"
+		(closed)="closeRobotPanel()"
 	/>
 </div>

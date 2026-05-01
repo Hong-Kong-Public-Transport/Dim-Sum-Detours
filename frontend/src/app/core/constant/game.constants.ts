@@ -87,6 +87,28 @@ export const GAME_CONSTANTS = Object.freeze({
 		/** Minimum on-screen lifetime of a delivery marker, in real milliseconds. */
 		minimumDurationMilliseconds: 500,
 	}),
+
+	walker: Object.freeze({
+		/**
+		 * @deprecated Phase-12 superseded by {@link GAME_CONSTANTS.robot.metersPerGameMinute}.
+		 * Kept for one cycle so any in-flight branch finishes — slated for removal once the
+		 * Phase-13 walker-leg metadata cleanup lands.
+		 */
+		metersPerGameMinute: 80,
+		/** @deprecated see above. */
+		busSpeedMultiplier: 6,
+	}),
+
+	robot: Object.freeze({
+		/**
+		 * Phase-12 robot model. Casual-biking pace ≈ 10 km/h. Mirrors backend
+		 * {@code GameConstants.ROBOT_METERS_PER_GAME_MINUTE}; consumed by
+		 * {@code VehicleService.interpolatePosition} to walk a robot along its server-supplied
+		 * path. Slower than buses (added in a future phase), faster than the deprecated
+		 * walker — robots feel like couriers, not pedestrians.
+		 */
+		metersPerGameMinute: 170,
+	}),
 });
 
 export type GameSpeed = (typeof GAME_CONSTANTS.clock.speeds)[number];

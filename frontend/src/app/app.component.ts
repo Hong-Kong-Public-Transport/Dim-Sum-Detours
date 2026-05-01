@@ -13,6 +13,7 @@ import {TooltipModule} from "primeng/tooltip";
 
 import {ClockControlsComponent} from "./component/clock-controls/clock-controls.component";
 import {MapComponent} from "./component/map/map.component";
+import {MilestoneToastComponent} from "./component/milestone-toast/milestone-toast.component";
 import {type AvailableLanguage, GAME_CONSTANTS, LANGUAGE_LABELS} from "./core/constant/game.constants";
 import {GameService} from "./core/service/game.service";
 import {GtfsService} from "./core/service/gtfs.service";
@@ -35,6 +36,7 @@ interface LanguageOption {
 		DialogModule,
 		FormsModule,
 		MapComponent,
+		MilestoneToastComponent,
 		ProgressSpinnerModule,
 		SelectModule,
 		ToolbarModule,

@@ -45,6 +45,10 @@ public class ClockController {
 			gameState.setClockSpeed(body.speed());
 			// Setting speed to 0 is the same as pausing in the UI.
 			gameState.setClockPaused(body.speed() == 0);
+			// Phase-13: clock SSE is throttled to 1 Hz; force an immediate emission so
+			// the frontend's `liveGameMinutes()` lerp re-anchors against the new speed
+			// without waiting up to a second for the next throttled tick.
+			engine.publishClockSnapshot();
 			return ResponseEntity.ok(gameState.getClockSnapshot());
 		});
 	}
@@ -53,6 +57,7 @@ public class ClockController {
 	public Mono<GameState.ClockSnapshot> pause() {
 		return Mono.fromSupplier(() -> {
 			gameState.setClockPaused(true);
+			engine.publishClockSnapshot();
 			return gameState.getClockSnapshot();
 		});
 	}
@@ -61,6 +66,7 @@ public class ClockController {
 	public Mono<GameState.ClockSnapshot> resume() {
 		return Mono.fromSupplier(() -> {
 			gameState.setClockPaused(false);
+			engine.publishClockSnapshot();
 			return gameState.getClockSnapshot();
 		});
 	}

@@ -48,15 +48,15 @@ class RestaurantTest {
 	void constructor_rejectsOutOfRangeReputation() {
 		UUID id = UUID.randomUUID();
 		assertThrows(IllegalArgumentException.class,
-			() -> new Restaurant(id, 47.6, -122.3, "garlic_rice", -0.1, null));
+			() -> new Restaurant(id, 47.6, -122.3, "garlic_rice", -0.1, false, null));
 		assertThrows(IllegalArgumentException.class,
-			() -> new Restaurant(id, 47.6, -122.3, "garlic_rice", 1.1, null));
+			() -> new Restaurant(id, 47.6, -122.3, "garlic_rice", 1.1, false, null));
 	}
 
 	@Test
 	void withReputation_preservesIdentityFields() {
 		UUID id = UUID.randomUUID();
-		Restaurant restaurant = new Restaurant(id, 47.6, -122.3, "garlic_rice", 0.7, "dim_sum_house");
+		Restaurant restaurant = new Restaurant(id, 47.6, -122.3, "garlic_rice", 0.7, false, "dim_sum_house");
 		Restaurant updated = restaurant.withReputation(0.4);
 		assertNotNull(updated);
 		assertEquals(id, updated.id());
@@ -65,6 +65,23 @@ class RestaurantTest {
 		assertEquals("garlic_rice", updated.recipeId());
 		assertEquals("dim_sum_house", updated.templateId());
 		assertEquals(0.4, updated.reputation());
+	}
+
+	@Test
+	void withReputation_belowCloseThreshold_marksRestaurantClosed() {
+		Restaurant restaurant = Restaurant.of(UUID.randomUUID(), 47.6, -122.3, "garlic_rice");
+		Restaurant dropped = restaurant.withReputation(0.10);
+		org.junit.jupiter.api.Assertions.assertTrue(dropped.closed(),
+			"reputation below RESTAURANT_CLOSE_REPUTATION_THRESHOLD must close the restaurant");
+	}
+
+	@Test
+	void withReputation_closedRestaurantStaysClosedOnReputationRecovery() {
+		Restaurant restaurant = Restaurant.of(UUID.randomUUID(), 47.6, -122.3, "garlic_rice")
+			.withReputation(0.05);
+		Restaurant rebounded = restaurant.withReputation(0.9);
+		org.junit.jupiter.api.Assertions.assertTrue(rebounded.closed(),
+			"a closed restaurant must not magically reopen on a reputation recovery");
 	}
 }
 

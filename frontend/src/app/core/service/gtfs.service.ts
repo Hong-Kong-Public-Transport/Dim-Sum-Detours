@@ -29,6 +29,30 @@ export class GtfsService {
 			`/api/gtfs/feeds/${encodeURIComponent(feedName)}/bbox`,
 		);
 	}
+
+	/**
+	 * Phase-7: fetch a transit-aware polyline through the loaded GTFS feed for a given
+	 * source/destination pair. Returns up to four {@code [lat, lon]} waypoints — the
+	 * endpoints, plus their respective nearest stops — so a delivery animation visibly
+	 * detours through the transit network instead of cutting straight across the city.
+	 */
+	feedRoute(
+		feedName: string,
+		fromLat: number,
+		fromLon: number,
+		toLat: number,
+		toLon: number,
+	): Observable<RouteResponse> {
+		const params = `?fromLat=${fromLat}&fromLon=${fromLon}&toLat=${toLat}&toLon=${toLon}`;
+		return this.httpClient.get<RouteResponse>(
+			`/api/gtfs/feeds/${encodeURIComponent(feedName)}/route${params}`,
+		);
+	}
+}
+
+export interface RouteResponse {
+	/** Each entry is a {@code [lat, lon]} pair. */
+	readonly waypoints: ReadonlyArray<readonly [number, number]>;
 }
 
 export interface GtfsFeedSummary {

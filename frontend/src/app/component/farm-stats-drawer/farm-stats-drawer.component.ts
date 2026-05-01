@@ -13,6 +13,7 @@ interface FarmView {
 	readonly recipe: Recipe;
 	readonly outputIngredientName: string;
 	readonly ratePerHour: number;
+	readonly producedUnits: number;
 }
 
 /**
@@ -62,6 +63,7 @@ export class FarmStatsDrawerComponent {
 				? localize(ingredient.displayName, language)
 				: (farm.outputIngredientId ?? "—"),
 			ratePerHour: Math.round(ratePerHour * 10) / 10,
+			producedUnits: farm.producedUnits ?? 0,
 		};
 	});
 

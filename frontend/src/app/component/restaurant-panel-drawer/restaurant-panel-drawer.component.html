@@ -26,33 +26,24 @@
 				<p-progressbar [value]="reputationPercent()" [showValue]="true" />
 			</div>
 
+			<div class="row center between gap-small">
+				<span class="app-muted app-small">{{ translate("drawer.restaurant.fulfilled") }}</span>
+				<span class="app-small">{{ fulfilledOrders() }}</span>
+			</div>
+
 			<div class="column gap-small">
-				<div class="row center between gap-small">
-					<span class="app-muted app-small">{{ translate("drawer.restaurant.orders") }}</span>
-					<p-button
-						[label]="translate('drawer.restaurant.enqueueTest')"
-						icon="pi pi-plus"
-						size="small"
-						severity="secondary"
-						[outlined]="true"
-						[disabled]="submitting()"
-						(onClick)="enqueueTestOrder()"
-					/>
-				</div>
+				<span class="app-muted app-small">{{ translate("drawer.restaurant.orders") }}</span>
 
 				@for (row of orderRows(); track row.order.id) {
 					<div class="order-row column gap-small">
 						<div class="row center between gap-small">
 							<span class="app-small">×{{ row.order.quantity }} · {{ row.minutesRemaining }} {{ translate("drawer.restaurant.minutes") }}</span>
-							<p-button
-								[label]="translate('drawer.restaurant.fulfill')"
-								icon="pi pi-check"
-								size="small"
-								severity="success"
-								[pTooltip]="translate('drawer.restaurant.fulfillTooltip')"
-								tooltipPosition="left"
-								(onClick)="fulfill(row.order.id)"
-							/>
+							@if (row.awaitingSupply) {
+								<span class="app-small app-muted">
+									<i class="pi pi-exclamation-triangle" aria-hidden="true"></i>
+									{{ translate("drawer.restaurant.awaitingSupply") }}
+								</span>
+							}
 						</div>
 						<p-progressbar
 							[value]="row.remainingPercent"

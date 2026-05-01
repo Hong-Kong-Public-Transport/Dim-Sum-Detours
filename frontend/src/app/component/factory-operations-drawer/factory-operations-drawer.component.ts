@@ -17,9 +17,25 @@ interface FactoryOperationView {
 	readonly name: string;
 }
 
+interface FactoryInputView {
+	readonly id: string;
+	readonly name: string;
+	readonly have: number;
+	readonly need: number;
+}
+
 interface FactoryView {
 	readonly recipe: Recipe | null;
 	readonly operations: readonly FactoryOperationView[];
+	readonly producedUnits: number;
+	readonly refrigerated: boolean;
+	/** Phase-10: per-input ingredient stockpile vs. the recipe's required quantity. Empty
+	 * for recipes without inputs (no-input farms aren't shown here anyway). */
+	readonly inputs: readonly FactoryInputView[];
+	/** Convenience flag — true when the recipe has inputs but every required ingredient
+	 * is below its per-cycle quantity. The template surfaces a "stalled — awaiting inputs"
+	 * hint so the player understands why the production ring isn't ticking. */
+	readonly stalled: boolean;
 }
 
 /**
@@ -44,6 +60,9 @@ export class FactoryOperationsDrawerComponent {
 
 	readonly closed = output<void>();
 	readonly reorder = output<readonly string[]>();
+	/** Phase-9 beta-polish: player asked to spend the refrigeration upgrade fee on this
+	 * factory. The parent component owns the HTTP call so this drawer stays presentation-only. */
+	readonly refrigerateRequested = output<void>();
 
 	protected readonly visible = computed(() => this.factory() !== null);
 
@@ -59,6 +78,21 @@ export class FactoryOperationsDrawerComponent {
 			operationLookup.set(operation.id, operation);
 		}
 		const operationIds = factory.operations ?? recipe?.operations ?? [];
+		const ingredientLookup = new Map<string, Ingredient>();
+		for (const ingredient of this.ingredients()) {
+			ingredientLookup.set(ingredient.id, ingredient);
+		}
+		const stockpile = factory.inputStockpile ?? {};
+		const inputs: FactoryInputView[] = (recipe?.inputs ?? []).map((input) => {
+			const ingredient = ingredientLookup.get(input.ingredientId);
+			return {
+				id: input.ingredientId,
+				name: ingredient ? localize(ingredient.displayName, language) : input.ingredientId,
+				have: stockpile[input.ingredientId] ?? 0,
+				need: input.quantity,
+			};
+		});
+		const stalled = inputs.length > 0 && inputs.every((entry) => entry.have < entry.need);
 		return {
 			recipe,
 			operations: operationIds.map((operationId, index) => {
@@ -69,8 +103,16 @@ export class FactoryOperationsDrawerComponent {
 					name: operation ? localize(operation.displayName, language) : operationId,
 				};
 			}),
+			producedUnits: factory.producedUnits ?? 0,
+			refrigerated: factory.refrigerated === true,
+			inputs,
+			stalled,
 		};
 	});
+
+	protected requestRefrigerate(): void {
+		this.refrigerateRequested.emit();
+	}
 
 	protected onVisibleChange(open: boolean): void {
 		if (!open) {

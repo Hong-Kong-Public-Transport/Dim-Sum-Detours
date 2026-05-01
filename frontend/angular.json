@@ -26,7 +26,11 @@
 						"tsConfig": "tsconfig.app.json",
 						"inlineStyleLanguage": "scss",
 						"allowedCommonJsDependencies": [
-							"leaflet"
+							"leaflet",
+							"leaflet-pixi-overlay",
+							"eventemitter3",
+							"earcut",
+							"url"
 						],
 						"assets": [
 							"src/assets"
@@ -42,8 +46,8 @@
 							"budgets": [
 								{
 									"type": "initial",
-									"maximumWarning": "1mb",
-									"maximumError": "2mb"
+									"maximumWarning": "2mb",
+									"maximumError": "3mb"
 								},
 								{
 									"type": "anyComponentStyle",

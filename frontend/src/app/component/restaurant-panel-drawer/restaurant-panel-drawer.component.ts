@@ -1,17 +1,15 @@
-import {ChangeDetectionStrategy, Component, computed, inject, input, output, signal} from "@angular/core";
+import {ChangeDetectionStrategy, Component, computed, inject, input, output} from "@angular/core";
 import {TranslocoDirective} from "@jsverse/transloco";
-import {ButtonModule} from "primeng/button";
 import {DrawerModule} from "primeng/drawer";
 import {ProgressBarModule} from "primeng/progressbar";
-import {TooltipModule} from "primeng/tooltip";
 
 import {Building} from "../../core/model/building.model";
 import {Ingredient} from "../../core/model/ingredient.model";
 import {Operation, Recipe} from "../../core/model/recipe.model";
 import {RestaurantTemplate} from "../../core/model/restaurant-template.model";
 import {ClockService} from "../../core/service/clock.service";
-import {GameService} from "../../core/service/game.service";
 import {Order, RestaurantService} from "../../core/service/restaurant.service";
+import {VehicleService} from "../../core/service/vehicle.service";
 import {RecipeTileComponent} from "../recipe-tile/recipe-tile.component";
 
 interface OrderRow {
@@ -20,22 +18,26 @@ interface OrderRow {
 	readonly remainingPercent: number;
 	readonly minutesRemaining: number;
 	readonly severity: "success" | "warn" | "danger";
+	/** Phase-12: order is enqueued but the server-side dispatcher hasn't found a robot
+	 * to send yet (no producer with stock + matching recipe). The drawer surfaces an
+	 * "awaiting supply" hint so the player knows the chain is incomplete rather than
+	 * the game being broken. Re-derived per-render from {@link VehicleService.vehicles}. */
+	readonly awaitingSupply: boolean;
 }
 
 /**
  * Right-edge drawer that surfaces the currently-selected restaurant's house dish, reputation,
  * and pending orders (each as a {@code p-progressbar} of the patience window). Pure
- * presentation aside from the two action buttons (enqueue test order / fulfill), which
- * delegate to {@link RestaurantService}.
+ * presentation — Phase-9 polish removed the manual test-order / fulfill buttons; orders
+ * are now exclusively procedural and arrival is exclusively driven by the walker animation
+ * landing at the restaurant marker.
  */
 @Component({
 	selector: "app-restaurant-panel-drawer",
 	imports: [
-		ButtonModule,
 		DrawerModule,
 		ProgressBarModule,
 		RecipeTileComponent,
-		TooltipModule,
 		TranslocoDirective,
 	],
 	changeDetection: ChangeDetectionStrategy.OnPush,
@@ -45,7 +47,7 @@ interface OrderRow {
 export class RestaurantPanelDrawerComponent {
 	private readonly restaurantService = inject(RestaurantService);
 	private readonly clockService = inject(ClockService);
-	private readonly gameService = inject(GameService);
+	private readonly vehicleService = inject(VehicleService);
 
 	readonly restaurant = input<Building | null>(null);
 	readonly recipes = input.required<readonly Recipe[]>();
@@ -79,6 +81,12 @@ export class RestaurantPanelDrawerComponent {
 		return value === undefined || value === null ? 0 : Math.round(value * 100);
 	});
 
+	/** Phase-13: lifetime fulfilled-order count surfaced under the reputation bar. */
+	protected readonly fulfilledOrders = computed<number>(() => {
+		const value = this.restaurant()?.fulfilledOrders;
+		return value === undefined || value === null ? 0 : value;
+	});
+
 	/** Pending orders held against this restaurant, projected for the progress bars. */
 	protected readonly orderRows = computed<readonly OrderRow[]>(() => {
 		const restaurant = this.restaurant();
@@ -87,13 +95,19 @@ export class RestaurantPanelDrawerComponent {
 		}
 		const allOrders = this.restaurantService.orders();
 		const now = this.clockService.snapshot().gameMinutes;
+		// Phase-12: an order is "awaiting supply" iff no in-flight robot is carrying it.
+		// The server's VehicleDispatcher retries each tick, so the moment a producer
+		// completes a cycle a robot will spawn and this flag will flip on the next render.
+		const inFlightOrderIds = new Set<string>();
+		for (const vehicle of this.vehicleService.vehicles().values()) {
+			if (vehicle.orderId !== null) {
+				inFlightOrderIds.add(vehicle.orderId);
+			}
+		}
 		return allOrders
 			.filter((order) => order.restaurantId === restaurant.id)
-			.map((order) => RestaurantPanelDrawerComponent.toRow(order, now));
+			.map((order) => RestaurantPanelDrawerComponent.toRow(order, now, !inFlightOrderIds.has(order.id)));
 	});
-
-	/** Local "submitting" flag so the enqueue button can disable while a request is in flight. */
-	protected readonly submitting = signal(false);
 
 	protected onVisibleChange(open: boolean): void {
 		if (!open) {
@@ -101,47 +115,12 @@ export class RestaurantPanelDrawerComponent {
 		}
 	}
 
-	protected enqueueTestOrder(): void {
-		const restaurant = this.restaurant();
-		if (!restaurant) {
-			return;
-		}
-		const template = this.template();
-		const patience = template?.basePatienceMinutes ?? 240;
-		this.submitting.set(true);
-		this.restaurantService.enqueueOrder(restaurant.id, {
-			recipeId: restaurant.recipeId,
-			quantity: 1,
-			patienceGameMinutes: patience,
-		}).subscribe({
-			next: () => this.submitting.set(false),
-			error: () => this.submitting.set(false),
-		});
-	}
-
-	protected fulfill(orderId: string): void {
-		const restaurant = this.restaurant();
-		if (!restaurant) {
-			return;
-		}
-		this.restaurantService.fulfillOrder(restaurant.id, orderId).subscribe({
-			next: (response) => {
-				// Server credited the wallet; pull the authoritative numbers + buildings so
-				// the marker re-renders with the bumped reputation.
-				this.gameService.refreshBalance().subscribe({error: () => undefined});
-				this.gameService.refreshBuildings().subscribe({error: () => undefined});
-				void response;
-			},
-			error: () => undefined,
-		});
-	}
-
-	private static toRow(order: Order, now: number): OrderRow {
+	private static toRow(order: Order, now: number, awaitingSupply: boolean): OrderRow {
 		const total = Math.max(1, order.deadlineGameMinutes - order.createdAtGameMinutes);
 		const remaining = Math.max(0, order.deadlineGameMinutes - now);
 		const percent = Math.max(0, Math.min(100, Math.round((remaining / total) * 100)));
 		const severity: OrderRow["severity"] = percent > 50 ? "success" : percent > 20 ? "warn" : "danger";
-		return {order, remainingPercent: percent, minutesRemaining: remaining, severity};
+		return {order, remainingPercent: percent, minutesRemaining: remaining, severity, awaitingSupply};
 	}
 }
 

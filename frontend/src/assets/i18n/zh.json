@@ -83,6 +83,13 @@
 			"title": "工廠",
 			"recipe": "食譜",
 			"operations": "工序鏈",
+			"producedTotal": "累計產量",
+			"refrigeration": "冷藏",
+			"refrigeratedActive": "已冷藏——出貨時保持新鮮",
+			"refrigerateUpgrade": "升級為冷藏（$2,000）",
+			"refrigerateTooltip": "暫停由此工廠出貨的食材腐壞計時。完成「冷鏈運輸」成就後解鎖。",
+			"inputsTitle": "原料庫存",
+			"inputsStalled": "停產中——等待原料送達",
 			"moveUp": "上移",
 			"moveDown": "下移"
 		},
@@ -90,18 +97,25 @@
 			"title": "農場",
 			"recipe": "食譜",
 			"outputIngredient": "產出食材",
-			"ratePerHour": "每遊戲小時產量"
+			"ratePerHour": "每遊戲小時產量",
+			"producedTotal": "累計產量"
 		},
 		"restaurant": {
 			"title": "餐廳",
 			"recipe": "招牌菜",
 			"reputation": "聲譽",
 			"orders": "待處理訂單",
-			"enqueueTest": "新增測試訂單",
-			"fulfill": "完成",
-			"fulfillTooltip": "立即完成此訂單——支付全額並提升聲譽，略過運送動畫。方便測試之用。",
+			"fulfilled": "累計完成訂單",
+			"awaitingSupply": "等候供應",
 			"noOrders": "暫無待處理訂單。",
 			"minutes": "分鐘剩餘"
+		},
+		"robot": {
+			"title": "機械人",
+			"cargo": "載貨",
+			"source": "起點",
+			"destination": "終點",
+			"eta": "預計到達"
 		}
 	},
 	"map": {
@@ -110,7 +124,11 @@
 			"farm": "農場",
 			"factory": "工廠",
 			"restaurant": "餐廳",
-			"delivery": "運送中"
+			"deliveryWalking": "食材徒步中",
+			"deliveryBoarded": "食材已搭上巴士",
+			"deliverySpoiled": "運送途中變壞",
+			"robot": "機械人運送中",
+			"robotSpoiled": "機械人載貨變壞"
 		}
 	},
 	"osm": {
@@ -127,5 +145,35 @@
 		"ingredients": "搜尋食材…",
 		"recipes": "搜尋食譜…",
 		"noMatches": "沒有符合的結果。"
+	},
+	"milestone": {
+		"firstDelivery": {
+			"title": "成就：首次送達",
+			"detail": "你的首道菜已送達顧客面前。閉環完成。"
+		},
+		"coldChain": {
+			"title": "成就：冷鏈運輸",
+			"detail": "易腐食材新鮮抵達。冷藏工廠升級已解鎖。"
+		},
+		"neighbourhoodHero": {
+			"title": "成就：街坊英雄",
+			"detail": "至少三間營業中的餐廳維持 80% 以上聲譽。"
+		},
+		"verticalIntegration": {
+			"title": "成就：垂直整合",
+			"detail": "你已掌握同一食譜的農場、工廠與餐廳全鏈。"
+		},
+		"cuisineMaster": {
+			"title": "成就：菜系大師",
+			"detail": "某菜系的所有食譜已全數送達。頂級菜式即將解鎖。"
+		},
+		"transitTycoon": {
+			"title": "成就：交通大亨",
+			"detail": "十條不同的 GTFS 路線正同時為你運送貨物。"
+		},
+		"cityBuilder": {
+			"title": "軟性勝利：城市建設者",
+			"detail": "城市已圍繞你的供應鏈成長。第九階段將把這個里程碑轉化為正式的勝利條件。"
+		}
 	}
 }

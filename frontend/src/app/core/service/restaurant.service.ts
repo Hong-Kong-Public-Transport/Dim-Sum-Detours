@@ -21,7 +21,7 @@ export interface EnqueueOrderRequest {
 
 /** Mirrors {@code GameController.FulfillOrderResponse}. */
 export interface FulfillOrderResponse {
-	readonly result: "FULFILLED" | "LATE" | "EXPIRED";
+	readonly result: "FULFILLED" | "LATE" | "EXPIRED" | "SPOILED";
 	readonly payout: number;
 	readonly newBalance: number;
 	readonly newReputation: number;
@@ -107,6 +107,20 @@ export class RestaurantService {
 		);
 	}
 
+	/**
+	 * Phase-7: report a spoiled-in-transit cargo. The backend applies the "missed delivery"
+	 * reputation hit, no payout. Symmetric to {@link fulfillOrder} so callers can swap one
+	 * for the other without re-plumbing the signal updates.
+	 */
+	spoilOrder(restaurantId: string, orderId: string): Observable<FulfillOrderResponse> {
+		const path = `/api/game/restaurants/${encodeURIComponent(restaurantId)}`
+			+ `/orders/${encodeURIComponent(orderId)}/spoil`;
+		return this.httpClient.post<FulfillOrderResponse>(path, {}).pipe(
+			tap(() => this._orders.update((list) => list.filter((order) => order.id !== orderId))),
+			map((response) => response),
+		);
+	}
+
 	/** Orders held against a specific restaurant. Cheap derivation off the signal. */
 	ordersFor(restaurantId: string): readonly Order[] {
 		return this._orders().filter((order) => order.restaurantId === restaurantId);
@@ -118,17 +132,24 @@ export class RestaurantService {
 			this.eventSource.onmessage = (event) => {
 				try {
 					const parsed = JSON.parse(event.data) as OrderEvent;
+					if (typeof parsed.type !== "string") {
+						// Phase-13 regression guard: same lesson as VehicleService — a
+						// missing `type` discriminator means every order frame is silently
+						// dropped and the restaurant drawer appears empty.
+						console.error("order stream frame missing 'type' discriminator", event.data);
+						return;
+					}
 					this.applyEvent(parsed);
 					this._lastEvent.set(parsed);
-				} catch {
-					// Malformed frame — ignore.
+				} catch (err) {
+					console.error("order stream frame failed to parse", err, event.data);
 				}
 			};
-			this.eventSource.onerror = () => {
-				// Browser auto-reconnects; nothing to do.
+			this.eventSource.onerror = (err) => {
+				console.warn("order stream error (browser will auto-reconnect)", err);
 			};
-		} catch {
-			// SSE unavailable (e.g. SSR pre-render); fall back to manual refresh.
+		} catch (err) {
+			console.error("order stream failed to open", err);
 		}
 	}
 

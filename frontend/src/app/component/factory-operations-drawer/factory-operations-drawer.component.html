@@ -55,6 +55,51 @@
 					}
 				</ol>
 			</div>
+			<div class="column gap-small">
+				<span class="app-muted app-small">{{ translate("drawer.factory.producedTotal") }}</span>
+				<strong>{{ factory.producedUnits }}</strong>
+			</div>
+			@if (factory.inputs.length > 0) {
+				<div class="column gap-small">
+					<span class="app-muted app-small">{{ translate("drawer.factory.inputsTitle") }}</span>
+					<ul class="column gap-small app-input-list">
+						@for (entry of factory.inputs; track entry.id) {
+							<li class="row center gap-small app-input-row">
+								<span class="spacing">{{ entry.name }}</span>
+								<span [class.app-muted]="entry.have >= entry.need" [class.app-input-low]="entry.have < entry.need">
+									{{ entry.have }} / {{ entry.need }}
+								</span>
+							</li>
+						}
+					</ul>
+					@if (factory.stalled) {
+						<span class="row center gap-small app-small app-input-low">
+							<i class="pi pi-exclamation-triangle" aria-hidden="true"></i>
+							{{ translate("drawer.factory.inputsStalled") }}
+						</span>
+					}
+				</div>
+			}
+			<div class="column gap-small">
+				<span class="app-muted app-small">{{ translate("drawer.factory.refrigeration") }}</span>
+				@if (factory.refrigerated) {
+					<span class="row center gap-small app-small">
+						<i class="pi pi-check-circle" aria-hidden="true"></i>
+						{{ translate("drawer.factory.refrigeratedActive") }}
+					</span>
+				} @else {
+					<p-button
+						[label]="translate('drawer.factory.refrigerateUpgrade')"
+						icon="pi pi-snowflake"
+						size="small"
+						severity="info"
+						[outlined]="true"
+						[pTooltip]="translate('drawer.factory.refrigerateTooltip')"
+						tooltipPosition="left"
+						(onClick)="requestRefrigerate()"
+					/>
+				}
+			</div>
 		</div>
 	}
 </p-drawer>

@@ -7,6 +7,7 @@ import com.dimsumdetours.sim.model.BuildingKind;
 import com.dimsumdetours.sim.model.Factory;
 import com.dimsumdetours.sim.model.Farm;
 import com.dimsumdetours.sim.model.GameClock;
+import com.dimsumdetours.sim.model.LatLon;
 import com.dimsumdetours.sim.model.Money;
 import com.dimsumdetours.sim.model.Order;
 import com.dimsumdetours.sim.model.OrderResult;
@@ -16,12 +17,16 @@ import com.dimsumdetours.sim.model.Recipe;
 import com.dimsumdetours.sim.model.RecipeIngredient;
 import com.dimsumdetours.sim.model.Restaurant;
 import com.dimsumdetours.sim.model.RestaurantTemplate;
+import com.dimsumdetours.sim.model.vehicle.Robot;
+import com.dimsumdetours.sim.model.vehicle.Vehicle;
+import com.dimsumdetours.sim.model.vehicle.VehicleEvent;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.locks.ReentrantLock;
@@ -46,8 +51,24 @@ public final class GameState {
 	private final Object2ObjectMap<UUID, Building> buildings = new Object2ObjectLinkedOpenHashMap<>();
 	/** Phase 6: per-restaurant pending-order queues. Lazily allocated on first enqueue. */
 	private final Object2ObjectMap<UUID, RestaurantOrderQueue> orderQueues = new Object2ObjectLinkedOpenHashMap<>();
+	/**
+	 * Phase-12: live in-flight vehicles, keyed by id. Mutated under the same {@link #lock}
+	 * as everything else so {@link #spawnRobot} and {@link #advanceVehicles} can debit
+	 * producers / credit destinations atomically with their position updates.
+	 */
+	private final Object2ObjectMap<UUID, Vehicle> vehicles = new Object2ObjectLinkedOpenHashMap<>();
+	/**
+	 * Per-{@code (sourceId, destinationId, ingredientId)} dedup guard so the per-tick
+	 * dispatcher doesn't launch duplicate robots while one is already in flight for the
+	 * same restock leg. Cleared on arrival inside {@link #advanceVehicles}.
+	 */
+	private final java.util.Set<String> activeRestockKeys = new java.util.HashSet<>();
 	private Money balance;
 	private final GameClock clock = new GameClock();
+	/** Last game-day (gameMinutes / 1440) on which {@link #applyDailyUpkeepIfDayChanged} ran.
+	 * {@code Long.MIN_VALUE} primes the comparison so the very first tick after game-start
+	 * doesn't immediately bill upkeep at game-minute 0. */
+	private long lastUpkeepDay = Long.MIN_VALUE;
 
 	public GameState(ContentRegistry registry) {
 		this(registry, Money.of(GameConstants.STARTING_BALANCE));
@@ -126,9 +147,11 @@ public final class GameState {
 			Building building = switch (kind) {
 				case FARM -> {
 					RecipeIngredient firstOutput = recipe.outputs().get(0);
-					yield new Farm(UUID.randomUUID(), lat, lon, recipeId, firstOutput.ingredientId());
+					yield Farm.of(UUID.randomUUID(), lat, lon, recipeId, firstOutput.ingredientId(),
+						clock.getGameMinutes(), cycleDurationFor(kind, recipe));
 				}
-				case FACTORY -> new Factory(UUID.randomUUID(), lat, lon, recipeId, recipe.operations());
+				case FACTORY -> Factory.of(UUID.randomUUID(), lat, lon, recipe,
+					clock.getGameMinutes(), cycleDurationFor(kind, recipe));
 				// Phase 6: a restaurant accepts deliveries of `recipeId` (its house dish). Order
 				// queue + patience timer are tracked separately so this record stays a value type.
 				case RESTAURANT -> Restaurant.of(UUID.randomUUID(), lat, lon, recipeId, templateId);
@@ -176,8 +199,11 @@ public final class GameState {
 		try {
 			buildings.clear();
 			orderQueues.clear();
+			vehicles.clear();
+			activeRestockKeys.clear();
 			balance = Money.of(GameConstants.STARTING_BALANCE);
 			clock.reset();
+			lastUpkeepDay = Long.MIN_VALUE;
 		} finally {
 			lock.unlock();
 		}
@@ -263,7 +289,8 @@ public final class GameState {
 			double delta = (result == OrderResult.FULFILLED)
 				? GameConstants.REPUTATION_GAIN_ON_TIME
 				: -GameConstants.REPUTATION_LOSS_LATE;
-			Restaurant updated = restaurant.withReputation(restaurant.reputation() + delta);
+			Restaurant updated = restaurant.withReputation(restaurant.reputation() + delta)
+				.withFulfilledIncremented();
 			buildings.put(restaurantId, updated);
 			return Optional.of(new OrderOutcome(result, payout, balance.amount(), updated.reputation()));
 		} finally {
@@ -300,6 +327,190 @@ public final class GameState {
 		}
 	}
 
+	/**
+	 * Phase-8 production tick. For every owned farm/factory, count the number of full
+	 * production cycles that elapsed since {@code cycleStartedAtGameMinutes}, increment
+	 * {@code producedUnits} accordingly, and re-anchor the cycle start to the most recent
+	 * boundary so the next tick picks up cleanly. No-op for restaurants. The frontend doesn't
+	 * need this to render the progress ring (it derives progress from the cycle anchor +
+	 * the live clock), but it does need it for the integer {@code producedUnits} count
+	 * surfaced in the farm/factory drawers.
+	 */
+	public void advanceProduction() {
+		lock.lock();
+		try {
+			long now = clock.getGameMinutes();
+			for (Building building : buildings.values().toArray(new Building[0])) {
+				switch (building) {
+					case Farm farm -> {
+						long elapsed = now - farm.cycleStartedAtGameMinutes();
+						if (elapsed < farm.cycleDurationGameMinutes()) {
+							continue;
+						}
+						long completed = elapsed / farm.cycleDurationGameMinutes();
+						long newAnchor = farm.cycleStartedAtGameMinutes()
+							+ completed * farm.cycleDurationGameMinutes();
+						buildings.put(farm.id(), farm.withProducedAdvance(completed, newAnchor));
+					}
+					case Factory factory -> {
+						long elapsed = now - factory.cycleStartedAtGameMinutes();
+						if (elapsed < factory.cycleDurationGameMinutes()) {
+							continue;
+						}
+						long elapsedCycles = elapsed / factory.cycleDurationGameMinutes();
+						// Phase-10: factory cycles are now gated on inputs. We can only
+						// complete as many cycles as the stockpile can satisfy. Recipes
+						// without inputs (defensive — shouldn't really exist for factories)
+						// fall through to the unbounded path. Recipes whose ingredient
+						// definition has been removed mid-game (modded content) also fall
+						// through, mirroring the Phase-7 lenient-fulfill philosophy.
+						Optional<Recipe> recipeOpt = registry.findRecipe(factory.recipeId());
+						long completed;
+						Factory afterInputs = factory;
+						if (recipeOpt.isPresent() && !recipeOpt.get().inputs().isEmpty()) {
+							Recipe recipe = recipeOpt.get();
+							long affordable = 0L;
+							while (affordable < elapsedCycles && afterInputs.hasInputsFor(recipe)) {
+								afterInputs = afterInputs.withInputsConsumed(recipe);
+								affordable++;
+							}
+							completed = affordable;
+						} else {
+							completed = elapsedCycles;
+						}
+						if (completed <= 0) {
+							// Phase-11: when stalled (no inputs), pin the cycle anchor to "now"
+							// so the frontend progress ring stays at 0% rather than sweeping
+							// through phantom partial progress. As soon as a delivery arrives,
+							// the next cycle starts cleanly from a fresh anchor and the player
+							// sees real progress, not a backlog.
+							if (factory.cycleStartedAtGameMinutes() != now) {
+								buildings.put(factory.id(), new Factory(
+									factory.id(), factory.lat(), factory.lon(), factory.recipeId(),
+									factory.operations(), now,
+									factory.cycleDurationGameMinutes(), factory.producedUnits(),
+									factory.refrigerated(), factory.inputStockpile()));
+							}
+							continue;
+						}
+						// If the factory completed every elapsed cycle, anchor to the natural
+						// cycle boundary. Otherwise (partial completion, ran out of inputs
+						// mid-window), anchor to "now" so the next cycle starts fresh once a
+						// delivery arrives — same stall semantics as the completed==0 branch.
+						long newAnchor = (completed == elapsedCycles)
+							? factory.cycleStartedAtGameMinutes()
+								+ completed * factory.cycleDurationGameMinutes()
+							: now;
+						buildings.put(factory.id(),
+							afterInputs.withProducedAdvance(completed, newAnchor));
+					}
+					case Restaurant ignored -> {
+						// Restaurants don't produce; deliveries arrive from elsewhere.
+					}
+				}
+			}
+		} finally {
+			lock.unlock();
+		}
+	}
+
+	/**
+	 * Phase-8 task 4: atomically reserve one finished unit from a farm/factory's stockpile.
+	 * Returns the updated building on success, or empty if the id doesn't belong to a
+	 * producer or its {@code producedUnits == 0}. The delivery dispatcher calls this just
+	 * before launching a van so an empty source can't supply an order.
+	 */
+	public Optional<Building> tryConsumeProducedUnit(UUID buildingId) {
+		lock.lock();
+		try {
+			Building existing = buildings.get(buildingId);
+			if (existing instanceof Farm farm) {
+				return farm.withProducedUnitConsumed().map(updated -> {
+					buildings.put(updated.id(), updated);
+					return (Building) updated;
+				});
+			}
+			if (existing instanceof Factory factory) {
+				return factory.withProducedUnitConsumed().map(updated -> {
+					buildings.put(updated.id(), updated);
+					return (Building) updated;
+				});
+			}
+			return Optional.empty();
+		} finally {
+			lock.unlock();
+		}
+	}
+
+	/**
+	 * Phase-10: deliver {@code quantity} units of {@code ingredientId} to a factory's
+	 * input stockpile. Returns the updated factory, or empty if the id doesn't belong to a
+	 * factory. Called by the farm→factory delivery walker on arrival. Atomic under the lock.
+	 */
+	public Optional<Factory> tryDeliverInputToFactory(UUID factoryId, String ingredientId, int quantity) {
+		if (quantity <= 0) {
+			return Optional.empty();
+		}
+		lock.lock();
+		try {
+			Building existing = buildings.get(factoryId);
+			if (!(existing instanceof Factory factory)) {
+				return Optional.empty();
+			}
+			Factory updated = factory.withInputDelivered(ingredientId, quantity);
+			buildings.put(factoryId, updated);
+			return Optional.of(updated);
+		} finally {
+			lock.unlock();
+		}
+	}
+
+	/**
+	 * Phase-8 task 6: spend {@link GameConstants#REFRIGERATION_UPGRADE_COST} to flip the
+	 * refrigerated flag on a factory. Returns the updated factory, or empty if the id isn't
+	 * a factory; throws {@link IllegalStateException} when the wallet can't cover the cost
+	 * so the controller can surface a 402 PAYMENT_REQUIRED. Already-refrigerated factories
+	 * are a no-op (no double charge).
+	 */
+	public Optional<Factory> tryUpgradeFactoryRefrigeration(UUID buildingId) {
+		lock.lock();
+		try {
+			Building existing = buildings.get(buildingId);
+			if (!(existing instanceof Factory factory)) {
+				return Optional.empty();
+			}
+			if (factory.refrigerated()) {
+				return Optional.of(factory);
+			}
+			Money cost = Money.of(GameConstants.REFRIGERATION_UPGRADE_COST);
+			if (!balance.isAtLeast(cost)) {
+				throw new IllegalStateException("INSUFFICIENT_FUNDS");
+			}
+			balance = balance.minus(cost);
+			Factory upgraded = factory.withRefrigerated();
+			buildings.put(upgraded.id(), upgraded);
+			return Optional.of(upgraded);
+		} finally {
+			lock.unlock();
+		}
+	}
+
+	/**
+	 * Resolve the production cycle duration for a building kind + recipe pair. Farms run a
+	 * single grow/harvest cycle; factories chain through every operation, so their cycle
+	 * scales with the operation count. Always at least one game-minute so a misconfigured
+	 * recipe doesn't divide-by-zero downstream.
+	 */
+	private static long cycleDurationFor(BuildingKind kind, Recipe recipe) {
+		long base = Math.max(1L, recipe.operationDurationMinutes());
+		return switch (kind) {
+			case FARM -> base;
+			case FACTORY -> base * Math.max(1, recipe.operations().size());
+			case RESTAURANT -> throw new IllegalArgumentException(
+				"Restaurants don't have a production cycle; cycleDurationFor() not callable");
+		};
+	}
+
 	private long lookupBasePayout(Restaurant restaurant) {
 		String templateId = restaurant.templateId();
 		if (templateId == null) {
@@ -310,12 +521,292 @@ public final class GameState {
 			.orElse(GameConstants.DEFAULT_RESTAURANT_PAYOUT);
 	}
 
+	/**
+	 * Mark an order as spoiled in transit. Removes it from the queue and applies the
+	 * "missed delivery" reputation hit (the cargo never arrived in usable form). Returns the
+	 * outcome carrying {@link OrderResult#SPOILED} and the updated reputation, or empty if
+	 * the order is already gone (already fulfilled / expired by the engine).
+	 */
+	public Optional<OrderOutcome> spoilOrder(UUID restaurantId, UUID orderId) {
+		lock.lock();
+		try {
+			RestaurantOrderQueue queue = orderQueues.get(restaurantId);
+			if (queue == null) {
+				return Optional.empty();
+			}
+			OrderResult removed = queue.fulfill(orderId, clock.getGameMinutes());
+			if (removed == null) {
+				return Optional.empty();
+			}
+			Building building = buildings.get(restaurantId);
+			double newReputation = 0.0;
+			if (building instanceof Restaurant restaurant) {
+				Restaurant updated = restaurant.withReputation(
+					restaurant.reputation() - GameConstants.REPUTATION_LOSS_MISSED);
+				buildings.put(restaurantId, updated);
+				newReputation = updated.reputation();
+			}
+			return Optional.of(new OrderOutcome(OrderResult.SPOILED, 0L, balance.amount(), newReputation));
+		} finally {
+			lock.unlock();
+		}
+	}
+
+	/**
+	 * Phase-7 daily upkeep. If the game-clock has rolled into a new game-day since this
+	 * method last ran, deduct each owned building's {@link BuildingKind#dailyUpkeep} from the
+	 * wallet (clamped at zero — going into debt is a Phase-8 concern). Returns the total
+	 * amount deducted on the day boundary, or {@code 0} when the day hasn't changed yet.
+	 */
+	public long applyDailyUpkeepIfDayChanged() {
+		lock.lock();
+		try {
+			long currentDay = clock.getGameMinutes() / (24L * 60L);
+			if (lastUpkeepDay == Long.MIN_VALUE) {
+				lastUpkeepDay = currentDay;
+				return 0L;
+			}
+			if (currentDay <= lastUpkeepDay) {
+				return 0L;
+			}
+			long daysElapsed = currentDay - lastUpkeepDay;
+			lastUpkeepDay = currentDay;
+			long total = 0L;
+			for (Building building : buildings.values()) {
+				total += building.kind().dailyUpkeep().amount() * daysElapsed;
+			}
+			long deducted = Math.min(balance.amount(), total);
+			balance = Money.of(balance.amount() - deducted);
+			return deducted;
+		} finally {
+			lock.unlock();
+		}
+	}
+
 	/** Outcome of a fulfilled order — exposed back to the API so it can echo the new wallet. */
 	public record OrderOutcome(OrderResult result, long payout, long newBalance, double newReputation) {
 	}
 
 	/** Carries an expired order plus the post-hit reputation of its restaurant. */
 	public record ExpiredOrderEvent(Order order, double newReputation) {
+	}
+
+	// ─── Phase 12: vehicles (robots) ──────────────────────────────────────
+
+	public List<Vehicle> listVehicles() {
+		lock.lock();
+		try {
+			return new ArrayList<>(vehicles.values());
+		} finally {
+			lock.unlock();
+		}
+	}
+
+	/**
+	 * Phase-12: spawn a robot carrying one ingredient from a producer to a downstream
+	 * factory or restaurant. Atomically debits one finished unit from the source's
+	 * stockpile (or returns empty when the source is dry / unknown / not a producer).
+	 * The path is straight-line for now — OSM street pathfinding will populate intermediate
+	 * waypoints in a later phase without changing this signature.
+	 *
+	 * @param sourceId          farm or factory shipping the cargo
+	 * @param destinationId     factory (restock) or restaurant (order) receiving it
+	 * @param ingredientId      what's riding the robot
+	 * @param quantity          how many units (≥ 1)
+	 * @param orderId           non-null for restaurant-bound robots; null for factory restocks
+	 * @param spoilageDeadline  game-minute past which the cargo spoils, or null
+	 * @return spawn event when successful; empty if the source had no stock
+	 */
+	public Optional<VehicleEvent.Spawned> spawnRobot(
+		UUID sourceId,
+		UUID destinationId,
+		String ingredientId,
+		int quantity,
+		@Nullable UUID orderId,
+		@Nullable Long spoilageDeadline
+	) {
+		if (quantity <= 0) {
+			throw new IllegalArgumentException("quantity must be positive, got " + quantity);
+		}
+		lock.lock();
+		try {
+			Building source = buildings.get(sourceId);
+			Building destination = buildings.get(destinationId);
+			if (source == null || destination == null) {
+				return Optional.empty();
+			}
+			// Debit one unit from the producer atomically with the spawn so a parallel
+			// dispatch can't drain the same physical unit twice.
+			Optional<Building> debited = consumeProducedUnitInternal(source);
+			if (debited.isEmpty()) {
+				return Optional.empty();
+			}
+			buildings.put(sourceId, debited.get());
+
+			List<LatLon> path = List.of(
+				new LatLon(source.lat(), source.lon()),
+				new LatLon(destination.lat(), destination.lon()));
+			long now = clock.getGameMinutes();
+			double distanceMeters = haversineMetres(
+				source.lat(), source.lon(), destination.lat(), destination.lon());
+			long travel = Math.max(1L, Math.round(
+				distanceMeters / GameConstants.ROBOT_METERS_PER_GAME_MINUTE));
+			Robot robot = new Robot(
+				UUID.randomUUID(),
+				sourceId,
+				destinationId,
+				Map.of(ingredientId, quantity),
+				path,
+				now,
+				now + travel,
+				orderId,
+				spoilageDeadline);
+			vehicles.put(robot.id(), robot);
+			if (orderId == null) {
+				activeRestockKeys.add(restockKey(sourceId, destinationId, ingredientId));
+			}
+			return Optional.of(new VehicleEvent.Spawned(robot, now));
+		} finally {
+			lock.unlock();
+		}
+	}
+
+	/**
+	 * Phase-12: walk every in-flight vehicle. Vehicles whose
+	 * {@link Robot#hasArrived(long)} returns true at the current game-minute are removed
+	 * and their cargo is applied to the destination — input stockpile for factories,
+	 * fulfil/spoil for restaurant orders. Returns the {@link VehicleEvent.Arrived} list
+	 * the engine needs to push onto the SSE stream (plus any
+	 * {@link com.dimsumdetours.sim.model.OrderEvent.Fulfilled} the caller wants to relay).
+	 */
+	public ArrivalBatch advanceVehicles() {
+		lock.lock();
+		try {
+			long now = clock.getGameMinutes();
+			List<VehicleEvent.Arrived> arrived = new ArrayList<>();
+			List<com.dimsumdetours.sim.model.OrderEvent.Fulfilled> fulfilments = new ArrayList<>();
+			for (Vehicle vehicle : vehicles.values().toArray(new Vehicle[0])) {
+				if (!(vehicle instanceof Robot robot) || !robot.hasArrived(now)) {
+					continue;
+				}
+				vehicles.remove(robot.id());
+				if (robot.orderId() == null) {
+					activeRestockKeys.remove(restockKey(
+						robot.sourceBuildingId(),
+						robot.destinationBuildingId(),
+						firstCargoIngredient(robot)));
+				}
+				@Nullable OrderResult orderResult = applyArrival(robot, now, fulfilments);
+				arrived.add(new VehicleEvent.Arrived(
+					robot.id(),
+					robot.destinationBuildingId(),
+					robot.orderId(),
+					orderResult,
+					now));
+			}
+			return new ArrivalBatch(arrived, fulfilments);
+		} finally {
+			lock.unlock();
+		}
+	}
+
+	/** Bundle returned from {@link #advanceVehicles()} so the engine can fan-out to two sinks. */
+	public record ArrivalBatch(
+		List<VehicleEvent.Arrived> vehicleEvents,
+		List<com.dimsumdetours.sim.model.OrderEvent.Fulfilled> orderEvents
+	) {
+	}
+
+	/**
+	 * Apply a robot's cargo to its destination. Factory restock → bump input stockpile.
+	 * Restaurant order → fulfil (or spoil) and add a corresponding {@code OrderEvent}
+	 * to the running list. Returns the {@link OrderResult} for the SSE arrival event,
+	 * or null for restock arrivals.
+	 */
+	private @Nullable OrderResult applyArrival(
+		Robot robot,
+		long now,
+		List<com.dimsumdetours.sim.model.OrderEvent.Fulfilled> fulfilments
+	) {
+		Building destination = buildings.get(robot.destinationBuildingId());
+		Map.Entry<String, Integer> only = robot.cargo().entrySet().iterator().next();
+		String ingredientId = only.getKey();
+		int quantity = only.getValue();
+
+		if (robot.orderId() == null) {
+			// Factory restock — credit the destination's input stockpile, no order math.
+			if (destination instanceof Factory factory) {
+				buildings.put(factory.id(), factory.withInputDelivered(ingredientId, quantity));
+			}
+			return null;
+		}
+
+		// Restaurant-bound robot. Decide spoiled vs. fulfilled, then settle the order.
+		boolean spoiled = robot.spoilageDeadlineGameMinutes() != null
+			&& now > robot.spoilageDeadlineGameMinutes();
+		Optional<OrderOutcome> outcome = spoiled
+			? spoilOrder(robot.destinationBuildingId(), robot.orderId())
+			: fulfillOrder(robot.destinationBuildingId(), robot.orderId());
+		outcome.ifPresent(o -> fulfilments.add(new com.dimsumdetours.sim.model.OrderEvent.Fulfilled(
+			robot.orderId(),
+			robot.destinationBuildingId(),
+			o.result(),
+			o.payout(),
+			o.newBalance(),
+			o.newReputation(),
+			now)));
+		return outcome.map(OrderOutcome::result).orElse(null);
+	}
+
+	/**
+	 * Phase-12 dedup guard accessor for the dispatcher: true iff a restock robot for
+	 * {@code (sourceId → destinationId, ingredientId)} is already in flight.
+	 */
+	public boolean hasActiveRestock(UUID sourceId, UUID destinationId, String ingredientId) {
+		lock.lock();
+		try {
+			return activeRestockKeys.contains(restockKey(sourceId, destinationId, ingredientId));
+		} finally {
+			lock.unlock();
+		}
+	}
+
+	/**
+	 * Phase-12 dedup guard accessor: true iff any in-flight vehicle is already carrying
+	 * {@code orderId}. Prevents the dispatcher from double-booking an order whose ENQUEUE
+	 * event the engine just emitted.
+	 */
+	public boolean hasInFlightOrder(UUID orderId) {
+		lock.lock();
+		try {
+			for (Vehicle vehicle : vehicles.values()) {
+				if (orderId.equals(vehicle.orderId())) {
+					return true;
+				}
+			}
+			return false;
+		} finally {
+			lock.unlock();
+		}
+	}
+
+	private static String restockKey(UUID sourceId, UUID destinationId, String ingredientId) {
+		return sourceId + ":" + destinationId + ":" + ingredientId;
+	}
+
+	private static String firstCargoIngredient(Robot robot) {
+		return robot.cargo().keySet().iterator().next();
+	}
+
+	/** Internal twin of {@link #tryConsumeProducedUnit} that runs under the caller's lock. */
+	private Optional<Building> consumeProducedUnitInternal(Building source) {
+		if (source instanceof Farm farm) {
+			return farm.withProducedUnitConsumed().map(updated -> (Building) updated);
+		}
+		if (source instanceof Factory factory) {
+			return factory.withProducedUnitConsumed().map(updated -> (Building) updated);
+		}
+		return Optional.empty();
 	}
 
 	// ─── Phase 4: clock access ────────────────────────────────────────────
@@ -371,8 +862,10 @@ public final class GameState {
 	public record ClockSnapshot(long gameMinutes, int dayOfWeek, int minuteOfDay, int speed, boolean playing) {
 	}
 
-	/** Great-circle distance between two lat/lon pairs, in metres. WGS-84 mean radius. */
-	private static double haversineMetres(double lat1, double lon1, double lat2, double lon2) {
+	/** Great-circle distance between two lat/lon pairs, in metres. WGS-84 mean radius.
+	 * Public so the Phase-12 dispatcher can pick the nearest producer without rolling
+	 * its own copy. */
+	public static double haversineMetres(double lat1, double lon1, double lat2, double lon2) {
 		double earthRadiusMetres = 6_371_000.0;
 		double phi1 = Math.toRadians(lat1);
 		double phi2 = Math.toRadians(lat2);
