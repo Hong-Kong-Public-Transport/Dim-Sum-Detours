@@ -40,11 +40,11 @@
 		"@angular/compiler-cli": "^21.2.11",
 		"@eslint/js": "^10.0.1",
 		"@types/leaflet": "^1.9.21",
-		"@typescript-eslint/eslint-plugin": "^8.59.1",
-		"@typescript-eslint/parser": "^8.59.1",
+		"@typescript-eslint/eslint-plugin": "^8.59.2",
+		"@typescript-eslint/parser": "^8.59.2",
 		"angular-eslint": "21.3.1",
 		"baseline-browser-mapping": "^2.10.27",
 		"eslint": "^10.3.0",
-		"typescript-eslint": "8.59.1"
+		"typescript-eslint": "8.59.2"
 	}
 }
