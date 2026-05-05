@@ -220,6 +220,13 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 	 * stays live without spamming the backend on every clock SSE frame (or — worse —
 	 * scaling the poll rate with game speed). */
 	private lastBuildingsRefreshWallMs = 0;
+	/** Phase-15: requestAnimationFrame handle for the production-progress lerp loop.
+	 * The CSS conic-gradient ring on each farm / factory marker is driven by a
+	 * `--progress` variable that this loop re-computes every browser frame off
+	 * {@link ClockService.liveGameMinutes} (the same source the robot Pixi layer
+	 * uses), so the ring sweeps smoothly between SSE frames instead of jumping
+	 * once per second. */
+	private progressRafHandle: number | null = null;
 
 	constructor() {
 		effect(() => {
@@ -286,35 +293,15 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 		// Phase-8: every game-clock tick, push the current production-cycle progress onto
 		// each farm/factory marker via a CSS variable. The marker's `.production-ring` child
 		// reads the variable to size its conic-gradient sweep — no Angular re-render needed.
+		// Phase-15: this effect's body is now ONLY the wall-clock-throttled
+		// /api/game/buildings refresh; the per-frame ring sweep is driven by a
+		// requestAnimationFrame loop in {@link startProgressLerpLoop} that reads
+		// {@link ClockService.liveGameMinutes} so the ring lerps smoothly between
+		// the throttled SSE clock frames instead of stepping once per second.
 		effect(() => {
-			const now = this.clockService.snapshot().gameMinutes;
-			for (const building of this.buildings()) {
-				if (building.kind === "RESTAURANT") {
-					continue;
-				}
-				const marker = this.buildingMarkers.get(building.id);
-				if (!marker) {
-					continue;
-				}
-				const cycleStart = building.cycleStartedAtGameMinutes ?? 0;
-				const duration = building.cycleDurationGameMinutes ?? 0;
-				if (duration <= 0) {
-					continue;
-				}
-				const elapsed = Math.max(0, now - cycleStart);
-				const progress = (elapsed % duration) / duration;
-				const element = marker.getElement();
-				if (element) {
-					element.style.setProperty("--progress", `${progress}`);
-				}
-			}
-			// Phase-13: refresh /api/game/buildings on a *wall-clock* cadence — every 2
-			// seconds of real time, regardless of game speed. The previous game-minute
-			// bucket was problematic at 256× speed (a "1 game-minute" bucket fires
-			// every ~4ms wall-clock and floods the backend). Wall-clock pacing keeps
-			// the load constant; the producedUnits counter visibly increments because
-			// at 1× speed a 10-game-min farm cycle finishes in 10 real seconds, well
-			// inside the 2s polling window.
+			// Track the snapshot signal so this effect re-arms when the clock starts /
+			// stops / changes speed (otherwise the wall-clock guard alone is enough).
+			this.clockService.snapshot();
 			const wallNow = Date.now();
 			if (wallNow - this.lastBuildingsRefreshWallMs >= 2000) {
 				this.lastBuildingsRefreshWallMs = wallNow;
@@ -366,11 +353,54 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 		this.gameService.refreshBuildings().subscribe({error: () => undefined});
 		this.gameService.refreshBalance().subscribe({error: () => undefined});
 		this.restaurantService.refreshOrders().subscribe({error: () => undefined});
+		this.startProgressLerpLoop();
 	}
 
 	ngOnDestroy(): void {
+		if (this.progressRafHandle !== null) {
+			cancelAnimationFrame(this.progressRafHandle);
+			this.progressRafHandle = null;
+		}
 		this.robotLayer?.destroy();
 		this.leafletMap?.remove();
+	}
+
+	/**
+	 * Phase-15: drive each building marker's `--progress` CSS variable on every
+	 * browser frame off {@link ClockService.liveGameMinutes}. The previous build
+	 * read `clockService.snapshot()` inside an effect, which only fired ~once per
+	 * real second when the clock SSE frame arrived (Phase-13 throttled it to 1 Hz),
+	 * so the ring stepped instead of sweeping. Reading {@code liveGameMinutes()}
+	 * — the same RAF source the robot Pixi layer uses for marker interpolation —
+	 * gives a smooth animation that auto-pauses when the clock pauses (the live
+	 * game-minute simply stops advancing).
+	 */
+	private startProgressLerpLoop(): void {
+		const tick = (): void => {
+			const now = this.clockService.liveGameMinutes();
+			for (const building of this.buildings()) {
+				if (building.kind === "RESTAURANT") {
+					continue;
+				}
+				const marker = this.buildingMarkers.get(building.id);
+				if (!marker) {
+					continue;
+				}
+				const cycleStart = building.cycleStartedAtGameMinutes ?? 0;
+				const duration = building.cycleDurationGameMinutes ?? 0;
+				if (duration <= 0) {
+					continue;
+				}
+				const elapsed = Math.max(0, now - cycleStart);
+				const progress = (elapsed % duration) / duration;
+				const element = marker.getElement();
+				if (element) {
+					element.style.setProperty("--progress", `${progress}`);
+				}
+			}
+			this.progressRafHandle = requestAnimationFrame(tick);
+		};
+		this.progressRafHandle = requestAnimationFrame(tick);
 	}
 
 	protected setSelectedFeed(value: string | null): void {

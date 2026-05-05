@@ -11,8 +11,13 @@ import java.util.UUID;
 /**
  * A small autonomous courier. Walks streets at {@link GameConstants#ROBOT_METERS_PER_GAME_MINUTE}
  * (≈ 10 km/h, casual biking pace — slower than a bus, faster than the previous walker
- * model). One robot carries one ingredient kind at a time; multi-ingredient cargo and
- * larger {@code Bus} / {@code Train} subtypes are deferred to a future phase.
+ * model). One robot carries one ingredient kind at a time.
+ *
+ * <p>Phase-16: a robot may carry an optional {@link VehicleHandoff handoff} that fires
+ * when it arrives at its (interim) destination — typically a GTFS boarding stop. The
+ * handoff causes the engine to despawn this robot and spawn a {@link Bus} carrying the
+ * same cargo, so the cargo flows through the multi-leg plan without ever leaving
+ * server state.
  */
 public record Robot(
 	UUID id,
@@ -21,9 +26,11 @@ public record Robot(
 	Map<String, Integer> cargo,
 	List<LatLon> path,
 	long spawnedAtGameMinutes,
+	long departsAtGameMinutes,
 	long arrivesAtGameMinutes,
 	@Nullable UUID orderId,
-	@Nullable Long spoilageDeadlineGameMinutes
+	@Nullable Long spoilageDeadlineGameMinutes,
+	@Nullable VehicleHandoff handoff
 ) implements Vehicle {
 
 	public Robot {
@@ -43,10 +50,12 @@ public record Robot(
 						+ entry.getKey() + "=" + entry.getValue());
 			}
 		}
-		if (arrivesAtGameMinutes < spawnedAtGameMinutes) {
+		if (departsAtGameMinutes < spawnedAtGameMinutes
+			|| arrivesAtGameMinutes < departsAtGameMinutes) {
 			throw new IllegalArgumentException(
-				"arrivesAt < spawnedAt (" + arrivesAtGameMinutes
-					+ " < " + spawnedAtGameMinutes + ")");
+				"Robot timing must satisfy spawnedAt <= departsAt <= arrivesAt, got "
+					+ spawnedAtGameMinutes + " / " + departsAtGameMinutes
+					+ " / " + arrivesAtGameMinutes);
 		}
 	}
 

@@ -100,13 +100,18 @@ public record Factory(
 	 * available. Mirrors {@link Farm#withProducedUnitConsumed()} for the delivery dispatcher.
 	 */
 	public java.util.Optional<Factory> withProducedUnitConsumed() {
-		if (producedUnits <= 0) {
+		return withProducedUnitsConsumed(1);
+	}
+
+	/** Phase-17 batch sibling of {@link #withProducedUnitConsumed()}. */
+	public java.util.Optional<Factory> withProducedUnitsConsumed(int n) {
+		if (n <= 0 || producedUnits < n) {
 			return java.util.Optional.empty();
 		}
 		return java.util.Optional.of(new Factory(
 			id, lat, lon, recipeId, operations,
 			cycleStartedAtGameMinutes, cycleDurationGameMinutes,
-			producedUnits - 1, refrigerated, inputStockpile));
+			producedUnits - n, refrigerated, inputStockpile));
 	}
 
 	/**

@@ -27,6 +27,17 @@ export class VehicleService {
 
 	private eventSource: EventSource | null = null;
 
+	/** Phase-15: wall-clock throttle for the post-arrival {@code refreshBuildings} /
+	 * {@code refreshBalance} HTTP fan-out. At 256× game speed dozens of robots can
+	 * arrive per real second; the previous implementation fired one HTTP pair per
+	 * arrival, which spammed the network panel. We now coalesce all arrivals within
+	 * a {@link REFRESH_DEBOUNCE_MS} wall-clock window into a single trailing-edge
+	 * refresh so the bandwidth stays constant regardless of game speed. */
+	private static readonly REFRESH_DEBOUNCE_MS = 1000;
+	private buildingsDirty = false;
+	private balanceDirty = false;
+	private refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
 	constructor() {
 		this.refreshSnapshot();
 		this.openStream();
@@ -42,7 +53,12 @@ export class VehicleService {
 			}
 			this._vehicles.set(new Map());
 		});
-		this.destroyRef.onDestroy(() => this.eventSource?.close());
+		this.destroyRef.onDestroy(() => {
+			this.eventSource?.close();
+			if (this.refreshTimer !== null) {
+				clearTimeout(this.refreshTimer);
+			}
+		});
 	}
 
 	/**
@@ -73,14 +89,15 @@ export class VehicleService {
 		if (path.length === 0) {
 			return {lat: 0, lon: 0};
 		}
-		if (gameMinutes <= vehicle.spawnedAtGameMinutes || path.length === 1) {
+		// Phase-17: stationary at the source while loading.
+		if (gameMinutes <= vehicle.departsAtGameMinutes || path.length === 1) {
 			return {lat: path[0][0], lon: path[0][1]};
 		}
 		if (gameMinutes >= vehicle.arrivesAtGameMinutes) {
 			const last = path[path.length - 1];
 			return {lat: last[0], lon: last[1]};
 		}
-		// Distribute the spawn→arrive window proportionally to per-segment length.
+		// Distribute the depart→arrive window proportionally to per-segment length.
 		const segments: {readonly meters: number}[] = [];
 		let totalMeters = 0;
 		for (let i = 0; i < path.length - 1; i++) {
@@ -91,8 +108,8 @@ export class VehicleService {
 		if (totalMeters <= 0) {
 			return {lat: path[0][0], lon: path[0][1]};
 		}
-		const totalGameMinutes = vehicle.arrivesAtGameMinutes - vehicle.spawnedAtGameMinutes;
-		let cursor = vehicle.spawnedAtGameMinutes;
+		const totalGameMinutes = vehicle.arrivesAtGameMinutes - vehicle.departsAtGameMinutes;
+		let cursor = vehicle.departsAtGameMinutes;
 		for (let i = 0; i < segments.length; i++) {
 			const segmentGameMinutes = totalGameMinutes * (segments[i].meters / totalMeters);
 			const segmentEnd = cursor + segmentGameMinutes;
@@ -141,7 +158,7 @@ export class VehicleService {
 
 	private applyEvent(event: VehicleEvent): void {
 		if (event.type === "SPAWNED") {
-			const vehicle = VehicleService.normalise(event.robot);
+			const vehicle = VehicleService.normalise(event.vehicle);
 			this._vehicles.update((map) => {
 				const next = new Map(map);
 				next.set(vehicle.id, vehicle);
@@ -157,12 +174,32 @@ export class VehicleService {
 				return next;
 			});
 			// An arrival changes building state (factory stockpile or restaurant
-			// reputation/balance). Refresh the local mirror so drawers update.
-			this.gameService.refreshBuildings().subscribe({error: () => undefined});
+			// reputation/balance). Coalesce refreshes within a wall-clock window so
+			// 256× speed (where dozens of arrivals can land per real second) doesn't
+			// spam the network panel.
+			this.buildingsDirty = true;
 			if (event.orderId !== null) {
+				this.balanceDirty = true;
+			}
+			this.scheduleRefreshFlush();
+		}
+	}
+
+	private scheduleRefreshFlush(): void {
+		if (this.refreshTimer !== null) {
+			return;
+		}
+		this.refreshTimer = setTimeout(() => {
+			this.refreshTimer = null;
+			if (this.buildingsDirty) {
+				this.buildingsDirty = false;
+				this.gameService.refreshBuildings().subscribe({error: () => undefined});
+			}
+			if (this.balanceDirty) {
+				this.balanceDirty = false;
 				this.gameService.refreshBalance().subscribe({error: () => undefined});
 			}
-		}
+		}, VehicleService.REFRESH_DEBOUNCE_MS);
 	}
 
 	/**
@@ -186,10 +223,13 @@ export class VehicleService {
 			cargo: payload.cargo,
 			path,
 			spawnedAtGameMinutes: payload.spawnedAtGameMinutes,
+			departsAtGameMinutes: payload.departsAtGameMinutes ?? payload.spawnedAtGameMinutes,
 			arrivesAtGameMinutes: payload.arrivesAtGameMinutes,
 			metersPerGameMinute: payload.metersPerGameMinute ?? GAME_CONSTANTS.robot.metersPerGameMinute,
 			orderId: payload.orderId,
 			spoilageDeadlineGameMinutes: payload.spoilageDeadlineGameMinutes,
+			tripId: payload.tripId ?? null,
+			routeId: payload.routeId ?? null,
 		};
 	}
 }

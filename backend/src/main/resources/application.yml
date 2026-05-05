@@ -32,6 +32,14 @@ dimsumdetours:
   overpass-url: https://overpass-api.de/api/interpreter
   # Folder where Overpass responses are cached (per bounding-box). Leave blank to disable.
   osm-cache-dir: data/osm
+  # Phase-14: world bbox the OSM street-graph loader fetches at startup. Defaults to
+  # Hong Kong — dim-sum's home turf. Match this to the placement-zones bbox your
+  # frontend uses.
+  world-bbox:
+    south: 22.150
+    west: 113.830
+    north: 22.580
+    east: 114.450
 
 logging:
   level:

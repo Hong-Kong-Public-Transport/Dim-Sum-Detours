@@ -8,9 +8,13 @@ import com.dimsumdetours.sim.model.Money;
 import com.dimsumdetours.sim.model.PlacementResult;
 import com.dimsumdetours.sim.model.Recipe;
 import com.dimsumdetours.sim.model.RecipeIngredient;
+import com.dimsumdetours.sim.model.LatLon;
+import com.dimsumdetours.sim.model.vehicle.Bus;
 import com.dimsumdetours.sim.model.vehicle.Robot;
 import com.dimsumdetours.sim.model.vehicle.Vehicle;
 import com.dimsumdetours.sim.model.vehicle.VehicleEvent;
+import com.dimsumdetours.sim.model.vehicle.VehicleHandoff;
+import com.dimsumdetours.sim.model.vehicle.VehicleKind;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -79,8 +83,7 @@ class GameStateVehicleTest {
 
 		// Advance the clock past the arrival deadline. advanceVehicles() removes the
 		// robot and credits the factory's input stockpile.
-		long travel = robot.arrivesAtGameMinutes() - robot.spawnedAtGameMinutes();
-		state.advanceClock(travel + 1);
+		state.advanceClock(robot.arrivesAtGameMinutes() - state.getClockSnapshot().gameMinutes() + 1);
 		GameState.ArrivalBatch batch = state.advanceVehicles();
 		assertEquals(1, batch.vehicleEvents().size());
 		assertTrue(state.listVehicles().isEmpty(), "vehicle should be removed on arrival");
@@ -144,6 +147,74 @@ class GameStateVehicleTest {
 
 		state.spawnRobot(farm.id(), factory.id(), "rice", 1, fakeOrderId, null);
 		assertTrue(state.hasInFlightOrder(fakeOrderId));
+	}
+
+	@Test
+	void spawnPlannedFirstLeg_chainsRobotThroughBusToRobot() {
+		GameState state = newState();
+		Farm farm = (Farm) ((PlacementResult.Success) state.placeBuilding(
+			BuildingKind.FARM, 47.60, -122.30, "grow_rice", null)).building();
+		Factory factory = (Factory) ((PlacementResult.Success) state.placeBuilding(
+			BuildingKind.FACTORY, 47.80, -122.50, "cooked_rice", null)).building();
+
+		state.advanceClock(10L);
+		state.advanceProduction();
+
+		LatLon source = new LatLon(farm.lat(), farm.lon());
+		LatLon boarding = new LatLon(47.65, -122.35);
+		LatLon alighting = new LatLon(47.75, -122.45);
+		LatLon dest = new LatLon(factory.lat(), factory.lon());
+
+		VehicleHandoff finalLeg = new VehicleHandoff(
+			VehicleKind.ROBOT, List.of(alighting, dest), 5L, null, null, null);
+		VehicleHandoff busLeg = new VehicleHandoff(
+			VehicleKind.BUS, List.of(boarding, alighting), 8L,
+			"trip-1", "route-A", finalLeg);
+
+		Optional<VehicleEvent.Spawned> first = state.spawnPlannedFirstLeg(
+			farm.id(), factory.id(), "rice", 1,
+			List.of(source, boarding), 4L, null, null, busLeg);
+		assertTrue(first.isPresent(), "first leg should spawn when source has stock");
+
+		// Farm was debited.
+		Farm afterSpawn = (Farm) state.listBuildings().stream()
+			.filter(b -> b.id().equals(farm.id())).findFirst().orElseThrow();
+		assertEquals(0L, afterSpawn.producedUnits());
+
+		// Robot first-leg arrival → bus leg spawned, robot removed.
+		Robot firstLeg = (Robot) state.listVehicles().get(0);
+		state.advanceClock(firstLeg.arrivesAtGameMinutes() - state.getClockSnapshot().gameMinutes() + 1);
+		GameState.ArrivalBatch firstBatch = state.advanceVehicles();
+		assertEquals(1, firstBatch.vehicleEvents().size(), "first robot arrived");
+		assertEquals(1, firstBatch.spawnEvents().size(), "bus leg spawned in same tick");
+		assertEquals(1, state.listVehicles().size());
+		Vehicle middle = state.listVehicles().get(0);
+		assertTrue(middle instanceof Bus, "middle leg should be a Bus");
+		Bus bus = (Bus) middle;
+		assertEquals("trip-1", bus.tripId());
+		assertEquals("route-A", bus.routeId());
+
+		// Bus arrival → final-leg robot spawned.
+		state.advanceClock(bus.arrivesAtGameMinutes() - state.getClockSnapshot().gameMinutes() + 1);
+		GameState.ArrivalBatch busBatch = state.advanceVehicles();
+		assertEquals(1, busBatch.vehicleEvents().size());
+		assertEquals(1, busBatch.spawnEvents().size());
+		assertEquals(1, state.listVehicles().size());
+		Vehicle finalLegVehicle = state.listVehicles().get(0);
+		assertTrue(finalLegVehicle instanceof Robot, "final leg should be a Robot");
+
+		// Final-leg arrival → cargo applied to the factory's input stockpile.
+		Robot finalRobot = (Robot) finalLegVehicle;
+		state.advanceClock(finalRobot.arrivesAtGameMinutes() - state.getClockSnapshot().gameMinutes() + 1);
+		GameState.ArrivalBatch finalBatch = state.advanceVehicles();
+		assertEquals(1, finalBatch.vehicleEvents().size());
+		assertEquals(0, finalBatch.spawnEvents().size(), "no further legs after terminal");
+		assertTrue(state.listVehicles().isEmpty(), "all legs removed on terminal arrival");
+		Factory afterArrival = (Factory) state.listBuildings().stream()
+			.filter(b -> b.id().equals(factory.id())).findFirst().orElseThrow();
+		assertEquals(1, afterArrival.inputStockpile().getOrDefault("rice", 0));
+		assertFalse(state.hasActiveRestock(farm.id(), factory.id(), "rice"),
+			"restock dedup should clear on terminal-leg arrival");
 	}
 }
 

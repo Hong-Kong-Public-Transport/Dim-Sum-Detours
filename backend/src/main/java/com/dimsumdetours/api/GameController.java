@@ -441,7 +441,8 @@ public class GameController {
 	/**
 	 * Phase-12 vehicle wire shape. Path is serialised as {@code List<double[2]>} so the
 	 * frontend can consume it as plain {@code [lat, lon]} pairs without bringing in a
-	 * dedicated LatLon model.
+	 * dedicated LatLon model. Phase-16 added {@code tripId} / {@code routeId} so the
+	 * frontend drawer can attribute a bus leg ("rode KMB 5A").
 	 */
 	public record VehicleDto(
 		UUID id,
@@ -451,15 +452,24 @@ public class GameController {
 		Map<String, Integer> cargo,
 		List<double[]> path,
 		long spawnedAtGameMinutes,
+		long departsAtGameMinutes,
 		long arrivesAtGameMinutes,
 		double metersPerGameMinute,
 		@Nullable UUID orderId,
-		@Nullable Long spoilageDeadlineGameMinutes
+		@Nullable Long spoilageDeadlineGameMinutes,
+		@Nullable String tripId,
+		@Nullable String routeId
 	) {
 		public static VehicleDto from(Vehicle vehicle) {
 			List<double[]> path = vehicle.path().stream()
 				.map(point -> new double[]{point.lat(), point.lon()})
 				.toList();
+			String tripId = null;
+			String routeId = null;
+			if (vehicle instanceof com.dimsumdetours.sim.model.vehicle.Bus bus) {
+				tripId = bus.tripId();
+				routeId = bus.routeId();
+			}
 			return new VehicleDto(
 				vehicle.id(),
 				vehicle.kind().name(),
@@ -468,10 +478,13 @@ public class GameController {
 				vehicle.cargo(),
 				path,
 				vehicle.spawnedAtGameMinutes(),
+				vehicle.departsAtGameMinutes(),
 				vehicle.arrivesAtGameMinutes(),
 				vehicle.metersPerGameMinute(),
 				vehicle.orderId(),
-				vehicle.spoilageDeadlineGameMinutes());
+				vehicle.spoilageDeadlineGameMinutes(),
+				tripId,
+				routeId);
 		}
 
 		public static VehicleDto from(Robot robot) {

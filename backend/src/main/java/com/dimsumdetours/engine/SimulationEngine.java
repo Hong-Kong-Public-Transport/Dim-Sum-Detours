@@ -61,6 +61,12 @@ public class SimulationEngine {
 	/** Carry-over fractional minutes between ticks so the clock stays integer. */
 	private double minuteAccumulator = 0.0;
 
+	/** Phase-14: last game-minute on which the milestone evaluator ran. The evaluator
+	 * is idempotent within a game-minute — none of its predicates can flip without the
+	 * clock advancing — so skipping it on duplicate-minute ticks (paused, or fractional
+	 * accumulator hasn't crossed a boundary yet) drops a chunk of per-tick work. */
+	private long lastEvaluatedGameMinute = Long.MIN_VALUE;
+
 	@PostConstruct
 	void start() {
 		log.info("Starting simulation engine: tick {} ms, 1× = {} game-min/real-sec",
@@ -124,14 +130,25 @@ public class SimulationEngine {
 			for (VehicleEvent.Arrived arrived : arrivals.vehicleEvents()) {
 				vehicleSink.tryEmitNext(arrived);
 			}
+			// Phase-16: chained handoffs surface the next-leg spawn through the same
+			// vehicle stream so the frontend's marker layer sees a normal SPAWNED event.
+			for (VehicleEvent.Spawned chainSpawn : arrivals.spawnEvents()) {
+				vehicleSink.tryEmitNext(chainSpawn);
+			}
 			for (OrderEvent.Fulfilled fulfilled : arrivals.orderEvents()) {
 				orderSink.tryEmitNext(fulfilled);
 				milestoneTracker.recordFulfillment(after.gameMinutes(), true, "", "");
 			}
 			// Phase-8 task 7: per-tick milestone evaluator. Cheap when nothing's changed; the
 			// tracker short-circuits each predicate by checking the unlocked-set first.
-			for (Milestone milestone : milestoneTracker.evaluate(gameState, java.util.Map.of(), after.gameMinutes())) {
-				milestoneSink.tryEmitNext(new MilestoneEvent(milestone, after.gameMinutes()));
+			// Phase-14: skip entirely when the game-minute hasn't advanced (paused, or the
+			// fractional accumulator hasn't crossed a whole-minute boundary yet) — none of
+			// the milestone predicates can flip without a clock tick.
+			if (after.gameMinutes() != lastEvaluatedGameMinute) {
+				lastEvaluatedGameMinute = after.gameMinutes();
+				for (Milestone milestone : milestoneTracker.evaluate(gameState, java.util.Map.of(), after.gameMinutes())) {
+					milestoneSink.tryEmitNext(new MilestoneEvent(milestone, after.gameMinutes()));
+				}
 			}
 			// Phase-13: throttle the clock SSE to ~1 Hz of wall-clock time regardless of
 			// game speed. The frontend extrapolates the game-minute locally between

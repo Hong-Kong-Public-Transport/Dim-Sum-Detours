@@ -21,7 +21,7 @@ import "leaflet-pixi-overlay";
 import * as Leaflet from "leaflet";
 import * as PIXI from "pixi.js";
 
-import type {Vehicle} from "../model/vehicle.model";
+import type {Vehicle, VehicleKind} from "../model/vehicle.model";
 
 /** Pixi-overlay's render-callback signature (no @types package, so we declare locally). */
 interface PixiOverlayUtils {
@@ -161,15 +161,19 @@ export class RobotPixiLayer {
 
 			let graphic = this.graphics.get(vehicle.id);
 			if (!graphic) {
-				graphic = RobotPixiLayer.makeBadge(spoiled);
-				graphic.zIndex = 10;
+				graphic = RobotPixiLayer.makeBadge(vehicle.kind, spoiled);
+				graphic.zIndex = vehicle.kind === "BUS" ? 11 : 10;
 				this.graphics.set(vehicle.id, graphic);
 				this.pixiContainer.addChild(graphic);
 			} else {
-				RobotPixiLayer.repaintBadge(graphic, spoiled);
+				RobotPixiLayer.repaintBadge(graphic, vehicle.kind, spoiled);
 			}
 			graphic.position.set(point.x, point.y);
 			graphic.scale.set(scale, scale);
+			// Phase-17: visually distinguish a loading vehicle (still at the source,
+			// hasn't departed yet) by dimming the badge. Once the depart minute passes
+			// it pops back to full opacity and starts moving.
+			graphic.alpha = now < vehicle.departsAtGameMinutes ? 0.45 : 1.0;
 
 			let click = this.clickMarkers.get(vehicle.id);
 			if (!click) {
@@ -210,18 +214,32 @@ export class RobotPixiLayer {
 	}
 
 	/**
-	 * Draw a small robot badge: a soft-blue rounded body, a smaller "head" circle on
-	 * top, two white dots for eyes, and a white outline so it stays legible over both
-	 * light and dark map tiles. Spoiled cargo flips the body colour to a dark red.
+	 * Draw a vehicle badge. {@code ROBOT} renders as a soft-blue rounded body with
+	 * an antenna and friendly eyes; {@code BUS} renders as a bigger sunshine-yellow
+	 * rectangle with a windshield strip + window panes so the player can spot the
+	 * GTFS-scheduled middle leg of a multi-leg shipment at a glance. Spoiled cargo
+	 * flips the body to a dark red regardless of kind.
 	 */
-	private static makeBadge(spoiled: boolean): PIXI.Graphics {
+	private static makeBadge(kind: VehicleKind, spoiled: boolean): PIXI.Graphics {
 		const graphic = new PIXI.Graphics();
-		RobotPixiLayer.repaintBadge(graphic, spoiled);
+		RobotPixiLayer.repaintBadge(graphic, kind, spoiled);
 		return graphic;
 	}
 
-	private static repaintBadge(graphic: PIXI.Graphics, spoiled: boolean): void {
+	private static repaintBadge(
+		graphic: PIXI.Graphics,
+		kind: VehicleKind,
+		spoiled: boolean,
+	): void {
 		graphic.clear();
+		if (kind === "BUS") {
+			RobotPixiLayer.paintBus(graphic, spoiled);
+			return;
+		}
+		RobotPixiLayer.paintRobot(graphic, spoiled);
+	}
+
+	private static paintRobot(graphic: PIXI.Graphics, spoiled: boolean): void {
 		const bodyColor = spoiled ? 0x8a1c1c : 0x6c8cff;
 		const outline = spoiled ? 0xffd6d6 : 0xffffff;
 		// Outer body: rounded rect for a "robot torso" silhouette.
@@ -246,6 +264,30 @@ export class RobotPixiLayer {
 		graphic.lineStyle(1, outline, 0.8);
 		graphic.moveTo(-3, 3);
 		graphic.quadraticCurveTo(0, 5, 3, 3);
+	}
+
+	private static paintBus(graphic: PIXI.Graphics, spoiled: boolean): void {
+		const bodyColor = spoiled ? 0x8a1c1c : 0xf5b400;
+		const outline = spoiled ? 0xffd6d6 : 0x222222;
+		const window = spoiled ? 0xffd6d6 : 0xb6e0ff;
+		// Bus body: longer rounded rectangle.
+		graphic.lineStyle(2, outline, 1);
+		graphic.beginFill(bodyColor, 1);
+		graphic.drawRoundedRect(-13, -8, 26, 16, 3);
+		graphic.endFill();
+		// Three side windows.
+		graphic.lineStyle(1, outline, 1);
+		graphic.beginFill(window, 1);
+		graphic.drawRect(-10, -5, 6, 5);
+		graphic.drawRect(-2.5, -5, 6, 5);
+		graphic.drawRect(5, -5, 6, 5);
+		graphic.endFill();
+		// Two wheels (negative-y so they sit at the body bottom).
+		graphic.lineStyle(0);
+		graphic.beginFill(outline, 1);
+		graphic.drawCircle(-7, 8, 2);
+		graphic.drawCircle(7, 8, 2);
+		graphic.endFill();
 	}
 }
 

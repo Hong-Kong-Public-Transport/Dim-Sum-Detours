@@ -17,11 +17,17 @@ import com.dimsumdetours.sim.model.Recipe;
 import com.dimsumdetours.sim.model.RecipeIngredient;
 import com.dimsumdetours.sim.model.Restaurant;
 import com.dimsumdetours.sim.model.RestaurantTemplate;
+import com.dimsumdetours.sim.model.vehicle.Bus;
 import com.dimsumdetours.sim.model.vehicle.Robot;
 import com.dimsumdetours.sim.model.vehicle.Vehicle;
 import com.dimsumdetours.sim.model.vehicle.VehicleEvent;
+import com.dimsumdetours.sim.model.vehicle.VehicleHandoff;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectList;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectSet;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -62,13 +68,49 @@ public final class GameState {
 	 * dispatcher doesn't launch duplicate robots while one is already in flight for the
 	 * same restock leg. Cleared on arrival inside {@link #advanceVehicles}.
 	 */
-	private final java.util.Set<String> activeRestockKeys = new java.util.HashSet<>();
+	private final ObjectSet<String> activeRestockKeys = new ObjectOpenHashSet<>();
+	/** Phase-14: reusable buffer for {@link #advanceProduction()}. We snapshot the
+	 * building values into this list so the per-tick body can call {@code buildings.put}
+	 * without invalidating the iterator. Cleared (not reallocated) at the start of each
+	 * tick to drop the prior {@code values().toArray(new Building[0])} allocation. */
+	private final ObjectList<Building> productionTickBuffer = new ObjectArrayList<>();
+	/** Phase-14: reusable buffer for {@link #advanceVehicles()}. Same rationale as
+	 * {@link #productionTickBuffer}. */
+	private final ObjectList<Vehicle> vehicleTickBuffer = new ObjectArrayList<>();
 	private Money balance;
 	private final GameClock clock = new GameClock();
 	/** Last game-day (gameMinutes / 1440) on which {@link #applyDailyUpkeepIfDayChanged} ran.
 	 * {@code Long.MIN_VALUE} primes the comparison so the very first tick after game-start
 	 * doesn't immediately bill upkeep at game-minute 0. */
 	private long lastUpkeepDay = Long.MIN_VALUE;
+	/**
+	 * Phase-14: monotonically-increasing version counter. Bumped on every
+	 * {@link #placeBuilding}, {@link #demolishBuilding}, and {@link #reset}. Read by
+	 * {@link com.dimsumdetours.engine.OrderGenerator} (and any future per-tick consumer)
+	 * to invalidate caches keyed off the placed-buildings set without diff-checking the
+	 * map. Versions are observation-only — never use them as identities. Long is plenty
+	 * for any plausible session length.
+	 */
+	private long version = 0L;
+	/**
+	 * Phase-14: pluggable street-network router. Defaults to
+	 * {@link RouteProvider#straightLine()} so the framework-agnostic core has no Spring
+	 * dependency; the Spring layer wires in
+	 * {@code com.dimsumdetours.osm.routing.OsmRouter} via {@link #setRouteProvider}.
+	 * Read on the simulation thread inside {@link #spawnRobot}; written once at boot
+	 * by the Spring config — {@code volatile} keeps the publication safe without
+	 * forcing a {@link ReentrantLock} acquisition for what is otherwise a pure read.
+	 */
+	private volatile RouteProvider routeProvider = RouteProvider.straightLine();
+
+	/**
+	 * Phase-14: install a custom route provider (typically the Spring-wired OSM router).
+	 * Safe to call at any time; the volatile field publishes the new value to the next
+	 * tick. Pass {@code null} to revert to the straight-line default — useful for tests.
+	 */
+	public void setRouteProvider(@Nullable RouteProvider provider) {
+		this.routeProvider = provider != null ? provider : RouteProvider.straightLine();
+	}
 
 	public GameState(ContentRegistry registry) {
 		this(registry, Money.of(GameConstants.STARTING_BALANCE));
@@ -93,6 +135,21 @@ public final class GameState {
 		lock.lock();
 		try {
 			return new ArrayList<>(buildings.values());
+		} finally {
+			lock.unlock();
+		}
+	}
+
+	/**
+	 * Phase-14: monotonically-increasing version of the placed-building set. Cache key
+	 * for any per-tick computation that depends on the built infrastructure (e.g. the
+	 * supplyable-recipe set in {@link com.dimsumdetours.engine.OrderGenerator}). Bumped
+	 * whenever a building is placed, demolished, or the game is reset.
+	 */
+	public long getBuildingsVersion() {
+		lock.lock();
+		try {
+			return version;
 		} finally {
 			lock.unlock();
 		}
@@ -158,6 +215,7 @@ public final class GameState {
 			};
 			balance = balance.minus(cost);
 			buildings.put(building.id(), building);
+			version++;
 			return new PlacementResult.Success(building, balance);
 		} finally {
 			lock.unlock();
@@ -167,7 +225,11 @@ public final class GameState {
 	public Optional<Building> demolishBuilding(UUID id) {
 		lock.lock();
 		try {
-			return Optional.ofNullable(buildings.remove(id));
+			Building removed = buildings.remove(id);
+			if (removed != null) {
+				version++;
+			}
+			return Optional.ofNullable(removed);
 		} finally {
 			lock.unlock();
 		}
@@ -204,6 +266,7 @@ public final class GameState {
 			balance = Money.of(GameConstants.STARTING_BALANCE);
 			clock.reset();
 			lastUpkeepDay = Long.MIN_VALUE;
+			version++;
 		} finally {
 			lock.unlock();
 		}
@@ -340,7 +403,9 @@ public final class GameState {
 		lock.lock();
 		try {
 			long now = clock.getGameMinutes();
-			for (Building building : buildings.values().toArray(new Building[0])) {
+			productionTickBuffer.clear();
+			productionTickBuffer.addAll(buildings.values());
+			for (Building building : productionTickBuffer) {
 				switch (building) {
 					case Farm farm -> {
 						long elapsed = now - farm.cycleStartedAtGameMinutes();
@@ -591,6 +656,74 @@ public final class GameState {
 	public record ExpiredOrderEvent(Order order, double newReputation) {
 	}
 
+	/**
+	 * Phase-16: spawn the first leg of a planner-built multi-leg chain. Bypasses the
+	 * single-leg distance cap (the planner has already split the journey into walkable
+	 * segments connected by transit) and accepts an explicit path / arrival deadline so
+	 * the dispatcher can size the leg around its boarding stop rather than the final
+	 * destination's geometry. The cargo is still debited from {@code sourceId} atomically;
+	 * the dedup guard on {@code (source, finalDest, ingredient)} for restocks is set here
+	 * and cleared only when the FINAL leg in the chain arrives.
+	 */
+	public Optional<VehicleEvent.Spawned> spawnPlannedFirstLeg(
+		UUID sourceId,
+		UUID finalDestinationId,
+		String ingredientId,
+		int quantity,
+		List<LatLon> firstLegPath,
+		long firstLegDurationGameMinutes,
+		@Nullable UUID orderId,
+		@Nullable Long spoilageDeadline,
+		VehicleHandoff handoff
+	) {
+		if (quantity <= 0) {
+			throw new IllegalArgumentException("quantity must be positive, got " + quantity);
+		}
+		if (firstLegPath.size() < 2) {
+			throw new IllegalArgumentException(
+				"firstLegPath must have ≥ 2 waypoints, got " + firstLegPath.size());
+		}
+		if (firstLegDurationGameMinutes <= 0) {
+			throw new IllegalArgumentException(
+				"firstLegDurationGameMinutes must be positive, got " + firstLegDurationGameMinutes);
+		}
+		lock.lock();
+		try {
+			Building source = buildings.get(sourceId);
+			Building destination = buildings.get(finalDestinationId);
+			if (source == null || destination == null) {
+				return Optional.empty();
+			}
+			Optional<Building> debited = consumeProducedUnitsInternal(source, quantity);
+			if (debited.isEmpty()) {
+				return Optional.empty();
+			}
+			buildings.put(sourceId, debited.get());
+
+			long now = clock.getGameMinutes();
+			long departsAt = now + GameConstants.ROBOT_LOADING_GAME_MINUTES;
+			Robot robot = new Robot(
+				UUID.randomUUID(),
+				sourceId,
+				finalDestinationId,
+				Map.of(ingredientId, quantity),
+				firstLegPath,
+				now,
+				departsAt,
+				departsAt + firstLegDurationGameMinutes,
+				orderId,
+				spoilageDeadline,
+				handoff);
+			vehicles.put(robot.id(), robot);
+			if (orderId == null) {
+				activeRestockKeys.add(restockKey(sourceId, finalDestinationId, ingredientId));
+			}
+			return Optional.of(new VehicleEvent.Spawned(robot, now));
+		} finally {
+			lock.unlock();
+		}
+	}
+
 	// ─── Phase 12: vehicles (robots) ──────────────────────────────────────
 
 	public List<Vehicle> listVehicles() {
@@ -625,6 +758,25 @@ public final class GameState {
 		@Nullable UUID orderId,
 		@Nullable Long spoilageDeadline
 	) {
+		return spawnRobot(sourceId, destinationId, ingredientId, quantity, orderId, spoilageDeadline, null);
+	}
+
+	/**
+	 * Phase-16 overload: spawn a robot whose arrival hands off to a follow-on leg.
+	 * Passing {@code handoff == null} reproduces the Phase-12 behaviour (apply cargo
+	 * on arrival). The {@link VehicleHandoff#nextHandoff()} chain is preserved
+	 * verbatim through every leg so the planner can express robot→bus→robot plans
+	 * without the engine having to remember anything between ticks.
+	 */
+	public Optional<VehicleEvent.Spawned> spawnRobot(
+		UUID sourceId,
+		UUID destinationId,
+		String ingredientId,
+		int quantity,
+		@Nullable UUID orderId,
+		@Nullable Long spoilageDeadline,
+		@Nullable VehicleHandoff handoff
+	) {
 		if (quantity <= 0) {
 			throw new IllegalArgumentException("quantity must be positive, got " + quantity);
 		}
@@ -635,20 +787,37 @@ public final class GameState {
 			if (source == null || destination == null) {
 				return Optional.empty();
 			}
-			// Debit one unit from the producer atomically with the spawn so a parallel
-			// dispatch can't drain the same physical unit twice.
-			Optional<Building> debited = consumeProducedUnitInternal(source);
+			// Phase-15: refuse single-leg robot trips beyond MAX_ROBOT_LEG_METERS. The
+			// cargo has to wait for a multi-leg plan (robot → bus → robot). For now,
+			// before the GTFS multi-leg planner is wired in, this manifests as orders
+			// from far-away sources simply not being dispatched — which is the right
+			// behaviour: the player should place a closer producer or wait for transit.
+			double straightLineMeters = haversineMetres(
+				source.lat(), source.lon(), destination.lat(), destination.lon());
+			if (straightLineMeters > GameConstants.MAX_ROBOT_LEG_METERS) {
+				return Optional.empty();
+			}
+			// Debit the full batch from the producer atomically with the spawn so a parallel
+			// dispatch can't drain the same physical units twice.
+			Optional<Building> debited = consumeProducedUnitsInternal(source, quantity);
 			if (debited.isEmpty()) {
 				return Optional.empty();
 			}
 			buildings.put(sourceId, debited.get());
 
-			List<LatLon> path = List.of(
+			List<LatLon> path = routeProvider.findPath(
 				new LatLon(source.lat(), source.lon()),
 				new LatLon(destination.lat(), destination.lon()));
+			// Defensive: a misbehaving provider that returns an empty / null-element list
+			// would otherwise crash the Robot canonical constructor. Fall back to straight-line.
+			if (path == null || path.size() < 2) {
+				path = List.of(
+					new LatLon(source.lat(), source.lon()),
+					new LatLon(destination.lat(), destination.lon()));
+			}
 			long now = clock.getGameMinutes();
-			double distanceMeters = haversineMetres(
-				source.lat(), source.lon(), destination.lat(), destination.lon());
+			long departsAt = now + GameConstants.ROBOT_LOADING_GAME_MINUTES;
+			double distanceMeters = pathLengthMetres(path);
 			long travel = Math.max(1L, Math.round(
 				distanceMeters / GameConstants.ROBOT_METERS_PER_GAME_MINUTE));
 			Robot robot = new Robot(
@@ -658,9 +827,11 @@ public final class GameState {
 				Map.of(ingredientId, quantity),
 				path,
 				now,
-				now + travel,
+				departsAt,
+				departsAt + travel,
 				orderId,
-				spoilageDeadline);
+				spoilageDeadline,
+				handoff);
 			vehicles.put(robot.id(), robot);
 			if (orderId == null) {
 				activeRestockKeys.add(restockKey(sourceId, destinationId, ingredientId));
@@ -684,35 +855,103 @@ public final class GameState {
 		try {
 			long now = clock.getGameMinutes();
 			List<VehicleEvent.Arrived> arrived = new ArrayList<>();
+			List<VehicleEvent.Spawned> spawned = new ArrayList<>();
 			List<com.dimsumdetours.sim.model.OrderEvent.Fulfilled> fulfilments = new ArrayList<>();
-			for (Vehicle vehicle : vehicles.values().toArray(new Vehicle[0])) {
-				if (!(vehicle instanceof Robot robot) || !robot.hasArrived(now)) {
+			vehicleTickBuffer.clear();
+			vehicleTickBuffer.addAll(vehicles.values());
+			for (Vehicle vehicle : vehicleTickBuffer) {
+				if (!hasArrived(vehicle, now)) {
 					continue;
 				}
-				vehicles.remove(robot.id());
-				if (robot.orderId() == null) {
-					activeRestockKeys.remove(restockKey(
-						robot.sourceBuildingId(),
-						robot.destinationBuildingId(),
-						firstCargoIngredient(robot)));
+				vehicles.remove(vehicle.id());
+
+				VehicleHandoff handoff = vehicle.handoff();
+				if (handoff != null) {
+					// Phase-16: chain into the next leg. Cargo, order, and spoilage deadline
+					// flow through unchanged so the player only sees a marker swap on the
+					// stop, not a fresh spawn from the original source.
+					Vehicle nextLeg = buildNextLeg(vehicle, handoff, now);
+					vehicles.put(nextLeg.id(), nextLeg);
+					arrived.add(new VehicleEvent.Arrived(
+						vehicle.id(),
+						vehicle.destinationBuildingId(),
+						vehicle.orderId(),
+						null,
+						now));
+					spawned.add(new VehicleEvent.Spawned(nextLeg, now));
+					continue;
 				}
-				@Nullable OrderResult orderResult = applyArrival(robot, now, fulfilments);
+
+				// Final-leg arrival: clear restock dedup, apply cargo to destination.
+				if (vehicle.orderId() == null) {
+					activeRestockKeys.remove(restockKey(
+						vehicle.sourceBuildingId(),
+						vehicle.destinationBuildingId(),
+						firstCargoIngredient(vehicle)));
+				}
+				@Nullable OrderResult orderResult = applyArrival(vehicle, now, fulfilments);
 				arrived.add(new VehicleEvent.Arrived(
-					robot.id(),
-					robot.destinationBuildingId(),
-					robot.orderId(),
+					vehicle.id(),
+					vehicle.destinationBuildingId(),
+					vehicle.orderId(),
 					orderResult,
 					now));
 			}
-			return new ArrivalBatch(arrived, fulfilments);
+			return new ArrivalBatch(arrived, spawned, fulfilments);
 		} finally {
 			lock.unlock();
 		}
 	}
 
+	private static boolean hasArrived(Vehicle vehicle, long now) {
+		return now >= vehicle.arrivesAtGameMinutes();
+	}
+
+	/**
+	 * Construct the next leg in a multi-leg chain. The handoff carries the new path
+	 * and duration; everything else (source, final destination, cargo, order, spoilage
+	 * deadline) is propagated from the current vehicle so the chain looks like a single
+	 * shipment to the rest of the system.
+	 */
+	private static Vehicle buildNextLeg(Vehicle current, VehicleHandoff handoff, long now) {
+		// Chained legs skip the loading window — the cargo's already loaded; the
+		// handoff is just a vehicle swap at the stop.
+		long arrivesAt = now + handoff.nextDurationGameMinutes();
+		return switch (handoff.nextKind()) {
+			case ROBOT -> new Robot(
+				UUID.randomUUID(),
+				current.sourceBuildingId(),
+				current.destinationBuildingId(),
+				current.cargo(),
+				handoff.nextPath(),
+				now,
+				now,
+				arrivesAt,
+				current.orderId(),
+				current.spoilageDeadlineGameMinutes(),
+				handoff.nextHandoff());
+			case BUS -> new Bus(
+				UUID.randomUUID(),
+				current.sourceBuildingId(),
+				current.destinationBuildingId(),
+				current.cargo(),
+				handoff.nextPath(),
+				now,
+				now,
+				arrivesAt,
+				current.orderId(),
+				current.spoilageDeadlineGameMinutes(),
+				handoff.nextHandoff(),
+				handoff.tripId(),
+				handoff.routeId());
+		};
+	}
+
+
 	/** Bundle returned from {@link #advanceVehicles()} so the engine can fan-out to two sinks. */
 	public record ArrivalBatch(
 		List<VehicleEvent.Arrived> vehicleEvents,
+		List<VehicleEvent.Spawned> spawnEvents,
 		List<com.dimsumdetours.sim.model.OrderEvent.Fulfilled> orderEvents
 	) {
 	}
@@ -724,16 +963,16 @@ public final class GameState {
 	 * or null for restock arrivals.
 	 */
 	private @Nullable OrderResult applyArrival(
-		Robot robot,
+		Vehicle vehicle,
 		long now,
 		List<com.dimsumdetours.sim.model.OrderEvent.Fulfilled> fulfilments
 	) {
-		Building destination = buildings.get(robot.destinationBuildingId());
-		Map.Entry<String, Integer> only = robot.cargo().entrySet().iterator().next();
+		Building destination = buildings.get(vehicle.destinationBuildingId());
+		Map.Entry<String, Integer> only = vehicle.cargo().entrySet().iterator().next();
 		String ingredientId = only.getKey();
 		int quantity = only.getValue();
 
-		if (robot.orderId() == null) {
+		if (vehicle.orderId() == null) {
 			// Factory restock — credit the destination's input stockpile, no order math.
 			if (destination instanceof Factory factory) {
 				buildings.put(factory.id(), factory.withInputDelivered(ingredientId, quantity));
@@ -741,15 +980,15 @@ public final class GameState {
 			return null;
 		}
 
-		// Restaurant-bound robot. Decide spoiled vs. fulfilled, then settle the order.
-		boolean spoiled = robot.spoilageDeadlineGameMinutes() != null
-			&& now > robot.spoilageDeadlineGameMinutes();
+		// Restaurant-bound vehicle. Decide spoiled vs. fulfilled, then settle the order.
+		boolean spoiled = vehicle.spoilageDeadlineGameMinutes() != null
+			&& now > vehicle.spoilageDeadlineGameMinutes();
 		Optional<OrderOutcome> outcome = spoiled
-			? spoilOrder(robot.destinationBuildingId(), robot.orderId())
-			: fulfillOrder(robot.destinationBuildingId(), robot.orderId());
+			? spoilOrder(vehicle.destinationBuildingId(), vehicle.orderId())
+			: fulfillOrder(vehicle.destinationBuildingId(), vehicle.orderId());
 		outcome.ifPresent(o -> fulfilments.add(new com.dimsumdetours.sim.model.OrderEvent.Fulfilled(
-			robot.orderId(),
-			robot.destinationBuildingId(),
+			vehicle.orderId(),
+			vehicle.destinationBuildingId(),
 			o.result(),
 			o.payout(),
 			o.newBalance(),
@@ -794,17 +1033,23 @@ public final class GameState {
 		return sourceId + ":" + destinationId + ":" + ingredientId;
 	}
 
-	private static String firstCargoIngredient(Robot robot) {
-		return robot.cargo().keySet().iterator().next();
+	private static String firstCargoIngredient(Vehicle vehicle) {
+		return vehicle.cargo().keySet().iterator().next();
 	}
 
 	/** Internal twin of {@link #tryConsumeProducedUnit} that runs under the caller's lock. */
 	private Optional<Building> consumeProducedUnitInternal(Building source) {
+		return consumeProducedUnitsInternal(source, 1);
+	}
+
+	/** Phase-17: batch-aware sibling. Returns empty if the source can't supply
+	 * the full {@code n}-unit batch atomically. */
+	private Optional<Building> consumeProducedUnitsInternal(Building source, int n) {
 		if (source instanceof Farm farm) {
-			return farm.withProducedUnitConsumed().map(updated -> (Building) updated);
+			return farm.withProducedUnitsConsumed(n).map(updated -> (Building) updated);
 		}
 		if (source instanceof Factory factory) {
-			return factory.withProducedUnitConsumed().map(updated -> (Building) updated);
+			return factory.withProducedUnitsConsumed(n).map(updated -> (Building) updated);
 		}
 		return Optional.empty();
 	}
@@ -875,5 +1120,16 @@ public final class GameState {
 			+ Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
 		double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 		return earthRadiusMetres * c;
+	}
+
+	/** Phase-14: total length of a polyline path in metres (sum of segment haversines). */
+	public static double pathLengthMetres(List<LatLon> path) {
+		double total = 0.0;
+		for (int i = 1; i < path.size(); i++) {
+			LatLon a = path.get(i - 1);
+			LatLon b = path.get(i);
+			total += haversineMetres(a.lat(), a.lon(), b.lat(), b.lon());
+		}
+		return total;
 	}
 }

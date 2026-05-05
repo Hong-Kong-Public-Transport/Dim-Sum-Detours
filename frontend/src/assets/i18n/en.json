@@ -112,10 +112,17 @@
 		},
 		"robot": {
 			"title": "Robot",
+			"titleBus": "Bus",
+			"kind": "Vehicle",
+			"kindRobot": "Robot",
+			"kindBus": "Bus (GTFS)",
+			"route": "Route",
 			"cargo": "Cargo",
 			"source": "From",
 			"destination": "To",
-			"eta": "ETA"
+			"eta": "ETA",
+			"statusLoading": "Loading cargo",
+			"statusTravel": "In transit"
 		}
 	},
 	"map": {

@@ -38,10 +38,13 @@ public sealed interface VehicleEvent {
 	long gameMinutes();
 
 	/**
-	 * A robot just dispatched. {@link Robot} is sent in full so the frontend can compute
-	 * positions purely from {@code spawnedAt + path + speed}.
+	 * A vehicle just dispatched. The full {@link Vehicle} is sent (sealed type, so the
+	 * wire payload carries a {@code "kind"} discriminator) and the frontend computes
+	 * positions purely from {@code spawnedAt + path + speed}. {@link Robot} legs and
+	 * {@link Bus} legs share this event so a planner-built chain surfaces every leg
+	 * change as a normal SPAWNED + ARRIVED pair.
 	 */
-	record Spawned(Robot robot, long gameMinutes) implements VehicleEvent {
+	record Spawned(Vehicle vehicle, long gameMinutes) implements VehicleEvent {
 		@Override
 		public String type() {
 			return "SPAWNED";

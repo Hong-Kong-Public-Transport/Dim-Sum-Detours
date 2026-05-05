@@ -198,4 +198,89 @@ public final class GameConstants {
 	 */
 	public static final long TRANSIT_TYCOON_WINDOW_GAME_MINUTES = 1_440L;
 	public static final int TRANSIT_TYCOON_DISTINCT_ROUTE_TARGET = 10;
+
+	// ─────────────────────────────────────────────────────────────────────────────
+	// Phase 14: OSM street pathfinding
+	// ─────────────────────────────────────────────────────────────────────────────
+	/**
+	 * Cache key version for the Overpass {@code way["highway"]} response. Bump when the
+	 * underlying QL template changes so old cache files are skipped.
+	 */
+	public static final String OSM_HIGHWAYS_CACHE_VERSION = "v1";
+
+	/**
+	 * Maximum great-circle distance (metres) the OSM router will accept when snapping
+	 * a building's lat/lon to its nearest street-graph node. Beyond this the router
+	 * falls back to the straight-line two-point path — happens when a building sits
+	 * inside a placement zone with no nearby way (e.g. a Country Park interior in
+	 * Hong Kong, or the middle of a US-style oversize parking lot).
+	 *
+	 * <p>Tuned at 1 km because Hong Kong's placement zones include Country Parks
+	 * whose centroids can sit several hundred metres from the nearest cycleway.
+	 * The earlier 250 m value was right for Bellingham (every park has a perimeter
+	 * road nearby) but caused most HK robots to fall back to straight-line.
+	 */
+	public static final double OSM_MAX_SNAP_METERS = 1_000.0;
+
+	/**
+	 * Hard cap on the number of A* node expansions before the router gives up and
+	 * falls back to straight-line. Guards against pathological edge cases (disconnected
+	 * components, malformed OSM data) bleeding into the simulation tick.
+	 */
+	public static final int OSM_MAX_ASTAR_EXPANSIONS = 200_000;
+
+	/**
+	 * Phase-15: maximum great-circle distance (metres) a single robot leg may cover.
+	 * Beyond this the dispatcher refuses to spawn the robot — the cargo must instead
+	 * route via a multi-leg plan that puts a bus / train in the middle. Both a realism
+	 * lever (a delivery cyclist isn't going to ride 30 km across Hong Kong from
+	 * Sheung Wan to Sai Kung) and a perf lever (caps the OSM A* search radius). Bus
+	 * and train legs are exempt — they're scheduled vehicles riding fixed corridors
+	 * for which any distance is reasonable.
+	 */
+	public static final double MAX_ROBOT_LEG_METERS = 5_000.0;
+
+	/**
+	 * Phase-16: maximum great-circle distance from a building to a candidate GTFS
+	 * boarding/alighting stop. Beyond this the planner refuses the stop — the player
+	 * would have to walk too far before catching the bus, which (a) doesn't match
+	 * the "robots scoot to the corner" framing and (b) blows the per-leg robot cap.
+	 * Tuned to the same scale as {@link #MAX_ROBOT_LEG_METERS} so a single robot
+	 * leg comfortably covers the walk to/from the stop.
+	 */
+	public static final double MAX_TRANSIT_STOP_WALK_METERS = 1_500.0;
+
+	/**
+	 * Phase-16: scheduled-speed approximation for GTFS bus legs when the planner is
+	 * computing arrival times without consulting per-trip stop_times. Tuned to a
+	 * loose 25 km/h average accounting for stops and signals — much faster than the
+	 * 10 km/h robot pace, slow enough that long-haul plans still feel costly.
+	 */
+	public static final double BUS_METERS_PER_GAME_MINUTE = 420.0;
+
+	// ─────────────────────────────────────────────────────────────────────────────
+	// Phase 17: robot batching + loading window
+	// ─────────────────────────────────────────────────────────────────────────────
+	/**
+	 * Phase-17: robots ship in fixed batches of this many units. Aliased to the
+	 * starting cart capacity (5) so a single shipment fills a whole truck rather
+	 * than the dispatcher firing one robot per single unit. Restaurants whose
+	 * order quantity is below the batch are still served by a 5-unit shipment;
+	 * the surplus is discarded on arrival (the order is fulfilled regardless).
+	 */
+	public static final int ROBOT_CARGO_BATCH_SIZE = STARTING_VEHICLE_CAPACITY;
+
+	/**
+	 * Phase-17: how long a freshly-spawned vehicle "loads" at its source before
+	 * it starts moving. The window matters less for gameplay (5 game-minutes at
+	 * 1× = 5 wall-clock seconds; almost nothing at 256×) than for SSE
+	 * resilience: by encoding a stationary head on every Spawned event, the
+	 * frontend has a guaranteed window to render the robot at its origin
+	 * regardless of when the next animation frame fires — robots stop appearing
+	 * to teleport when arrivals batch within a single real-time second.
+	 *
+	 * <p>Mirrored on the frontend in {@code GAME_CONSTANTS.robot.loadingGameMinutes}
+	 * so the drawer's progress bar can show the loading vs. travel split.
+	 */
+	public static final long ROBOT_LOADING_GAME_MINUTES = 5L;
 }

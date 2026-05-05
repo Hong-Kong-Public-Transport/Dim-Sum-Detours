@@ -3,13 +3,23 @@
 	[visible]="visible()"
 	(visibleChange)="onVisibleChange($event)"
 	position="right"
-	[header]="translate('drawer.robot.title')"
+	[header]="translate(view()?.kind === 'BUS' ? 'drawer.robot.titleBus' : 'drawer.robot.title')"
 	[modal]="false"
 	[dismissible]="true"
 	styleClass="app-robot-drawer"
 >
 	@if (view(); as robot) {
 		<div class="column gap">
+			<div class="column gap-small">
+				<span class="app-muted app-small">{{ translate("drawer.robot.kind") }}</span>
+				<strong>{{ translate(robot.kind === "BUS" ? "drawer.robot.kindBus" : "drawer.robot.kindRobot") }}</strong>
+			</div>
+			@if (robot.kind === "BUS" && robot.routeId) {
+				<div class="column gap-small">
+					<span class="app-muted app-small">{{ translate("drawer.robot.route") }}</span>
+					<strong>{{ robot.routeId }}@if (robot.tripId) { <span class="app-muted"> · {{ robot.tripId }}</span> }</strong>
+				</div>
+			}
 			<div class="column gap-small">
 				<span class="app-muted app-small">{{ translate("drawer.robot.cargo") }}</span>
 				@if (robot.cargo.length === 0) {
@@ -34,7 +44,10 @@
 			</div>
 			<div class="column gap-small">
 				<span class="app-muted app-small">{{ translate("drawer.robot.eta") }}</span>
-				<strong>{{ robot.etaMinutes }} min · {{ robot.progressPercent }}%</strong>
+				<strong>
+					{{ translate(robot.status === "LOADING" ? "drawer.robot.statusLoading" : "drawer.robot.statusTravel") }}
+					· {{ robot.etaMinutes }} min · {{ robot.progressPercent }}%
+				</strong>
 			</div>
 		</div>
 	}

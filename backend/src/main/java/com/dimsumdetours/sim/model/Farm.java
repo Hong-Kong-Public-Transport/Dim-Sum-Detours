@@ -68,12 +68,22 @@ public record Farm(
 	 * actual produced inventory rather than letting empty farms supply orders.
 	 */
 	public java.util.Optional<Farm> withProducedUnitConsumed() {
-		if (producedUnits <= 0) {
+		return withProducedUnitsConsumed(1);
+	}
+
+	/**
+	 * Phase-17: atomic batch debit. Returns a copy with {@code n} finished units
+	 * consumed, or empty if the stockpile holds fewer than {@code n}. The dispatcher
+	 * uses this to ship a full robot batch in one go rather than launching N robots
+	 * each carrying one unit.
+	 */
+	public java.util.Optional<Farm> withProducedUnitsConsumed(int n) {
+		if (n <= 0 || producedUnits < n) {
 			return java.util.Optional.empty();
 		}
 		return java.util.Optional.of(new Farm(
 			id, lat, lon, recipeId, outputIngredientId,
 			cycleStartedAtGameMinutes, cycleDurationGameMinutes,
-			producedUnits - 1));
+			producedUnits - n));
 	}
 }

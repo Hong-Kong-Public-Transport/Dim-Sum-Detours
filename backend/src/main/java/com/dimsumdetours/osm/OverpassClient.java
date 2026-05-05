@@ -60,8 +60,9 @@ public class OverpassClient {
 
 	private final DimSumDetoursProperties properties;
 	private final WebClient webClient = WebClient.builder()
-		// Overpass responses can be large; lift the default 256 KiB buffer.
-		.codecs(c -> c.defaultCodecs().maxInMemorySize(32 * 1024 * 1024))
+		// Overpass responses can be very large for a city-sized bbox; lift the
+		// 256 KiB default to 1 GiB so we never truncate. Real heap cost = response.
+		.codecs(c -> c.defaultCodecs().maxInMemorySize(1024 * 1024 * 1024))
 		.build();
 
 	/**
