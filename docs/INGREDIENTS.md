@@ -1,7 +1,10 @@
 # Base Game Ingredients
 
-The Phase 1 ship includes 8 ingredients that demonstrate the full
-**garlic + salt → garlic salt → garlic rice** supply chain.
+The current ship is a Cantonese / dim-sum tree: three raw proteins / staples
+(`pork`, `shrimp`, `flour`) feed three steamed dishes (`cha_siu_bao`,
+`siu_mai`, `har_gow`), with three condiments (`soy_sauce`, `chili_oil`,
+`white_pepper`) plus `salt` and a side `rice → cooked_rice` chain reserved
+for a future congee tier.
 
 Each ingredient is defined as a JSON file under
 `backend/src/main/resources/content/ingredients/<id>.json`. Mods can override any of
@@ -11,31 +14,35 @@ them by placing a same-id file under `data/mods/<mod-name>/ingredients/`.
 
 ```jsonc
 {
-	"id": "garlic",                    // lower_snake_case, globally unique
+	"id": "pork",                      // lower_snake_case, globally unique
 	"displayName": {                   // BCP-47 locale tag → translation
-		"en": "Garlic",                  // mandatory; loaders reject content missing it
-		"zh": "蒜頭"                     // optional translations
+		"en": "Pork",                    // mandatory; loaders reject content missing it
+		"zh": "豬肉"                     // optional translations
 	},
-	"category": "vegetable",           // reference to a category id (lower_snake_case)
-	"shelfLifeMinutes": 14400,         // -1 means non-perishable
+	"category": "meat",                // reference to a category id (lower_snake_case)
+	"shelfLifeMinutes": 360,           // -1 means non-perishable
 	"refrigeratable": true,            // refrigerated factories pause the spoilage timer
-	"baseValue": 8,                    // reference market value
-	"tags": ["aromatic", "perishable", "farmable"]   // free-form, lower_snake_case
+	"baseValue": 18,                   // reference market value
+	"tags": ["protein", "perishable", "farmable"]   // free-form, lower_snake_case
 }
 ```
 
-## Phase 1 ingredient catalogue
+## Ingredient catalogue
 
-| ID                  | en                | zh   | Category  | Shelf life (min) | Refrigeratable | Base value |
-|---------------------|-------------------|------|-----------|-----------------:|:--------------:|-----------:|
-| `garlic`            | Garlic            | 蒜頭   | vegetable |           14 400 |       ✓        |          8 |
-| `salt`              | Salt              | 鹽    | spice     |               -1 |                |          2 |
-| `rice`              | Rice              | 米    | grain     |               -1 |                |          5 |
-| `dehydrated_garlic` | Dehydrated Garlic | 脫水蒜頭 | processed |           43 200 |                |         12 |
-| `garlic_powder`     | Garlic Powder     | 蒜粉   | spice     |           43 200 |                |         18 |
-| `garlic_salt`       | Garlic Salt       | 蒜鹽   | spice     |           43 200 |                |         15 |
-| `cooked_rice`       | Cooked Rice       | 白飯   | processed |              720 |       ✓        |          9 |
-| `garlic_rice`       | Garlic Rice       | 蒜香飯  | processed |              480 |       ✓        |         28 |
+| ID             | en                  | zh   | Category   | Shelf life (min) | Refrigeratable | Base value |
+|----------------|---------------------|------|------------|-----------------:|:--------------:|-----------:|
+| `pork`         | Pork                | 豬肉  | meat       |              360 |       ✓        |         18 |
+| `shrimp`       | Shrimp              | 蝦   | seafood    |              240 |       ✓        |         22 |
+| `flour`        | Wheat Flour         | 麵粉  | grain      |               -1 |                |          6 |
+| `rice`         | Rice                | 米   | grain      |               -1 |                |          5 |
+| `salt`         | Salt                | 鹽   | spice      |               -1 |                |          3 |
+| `soy_sauce`    | Soy Sauce           | 醬油  | condiment  |               -1 |                |         12 |
+| `chili_oil`    | Chili Oil           | 辣油  | condiment  |               -1 |                |         18 |
+| `white_pepper` | Ground White Pepper | 白胡椒 | spice      |               -1 |                |         15 |
+| `cooked_rice`  | Cooked Rice         | 白飯  | processed  |              720 |       ✓        |         12 |
+| `cha_siu_bao`  | Cha Siu Bao         | 叉燒包 | processed  |              360 |       ✓        |         60 |
+| `siu_mai`      | Siu Mai             | 燒賣  | processed  |              240 |       ✓        |         65 |
+| `har_gow`      | Har Gow             | 蝦餃  | processed  |              240 |       ✓        |         70 |
 
 ## Categories (also JSON-defined)
 
@@ -48,5 +55,6 @@ Located under `backend/src/main/resources/content/categories/`. IDs:
 Tags are descriptive metadata used by the simulation and UI for filtering, pricing
 modifiers, and unlock conditions. All tags are lower_snake_case.
 
-Common tags so far: `aromatic`, `perishable`, `non_perishable`, `farmable`,
-`staple`, `seasoning`, `dish`, `intermediate`.
+Common tags so far: `protein`, `perishable`, `non_perishable`, `farmable`,
+`staple`, `seasoning`, `dish`, `dim_sum`, `steamed`, `intermediate`.
+

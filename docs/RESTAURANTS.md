@@ -15,7 +15,7 @@ reputation. The roster of available restaurants ships as JSON content under
 2. **Order enqueue.** A pending `Order` is created with `createdAtGameMinutes`,
    `deadlineGameMinutes` (driven by the template's `basePatienceMinutes`), and a target
    recipe id. Phase 6 ships a "New test order" button on the restaurant drawer that issues
-   one manually; later phases will spawn orders procedurally.
+   one manually; later phases spawn orders procedurally.
 3. **Delivery animation.** `DeliveryService` reacts to the SSE `ENQUEUED` event, picks the
    nearest farm/factory whose `recipeId` matches the order, and queues a
    `DeliveryAnimation`. The map component interpolates a delivery marker linearly between
@@ -35,37 +35,37 @@ reputation. The roster of available restaurants ships as JSON content under
 	"id": "dim_sum_house",
 	"displayName": {
 		"en": "Dim Sum House",
-		"zh": "點心軒"
+		"zh": "點心居"
 	},
-	"acceptedRecipeIds": ["garlic_rice"],
+	"acceptedRecipeIds": ["cha_siu_bao", "har_gow", "siu_mai"],
 	"basePatienceMinutes": 240,
-	"basePayout": 1500,
-	"tags": ["chinese"]
+	"basePayout": 900,
+	"tags": ["cantonese", "tier_1", "dim_sum"]
 }
 ```
 
 | Field                 | Type                                | Required | Notes                                                                                                                       |
 |-----------------------|-------------------------------------|:--------:|-----------------------------------------------------------------------------------------------------------------------------|
-| `id`                  | `string` (lower\_snake\_case)       |    ✅     | Unique identifier. Mod content overrides built-in entries with the same id.                                                 |
-| `displayName`         | `{ [locale: string]: string }`      |    ✅     | Inline localisation; `en` is mandatory, others optional. Resolution falls back through region subtags down to `en`.         |
-| `acceptedRecipeIds`   | `string[]`                          |    ✅     | Recipes this restaurant will order. **First entry is the house dish** and the only one used at spawn time today.            |
-| `basePatienceMinutes` | `integer`                           |    ✅     | Default order patience window in game minutes (drives `Order.deadlineGameMinutes - createdAtGameMinutes`).                  |
-| `basePayout`          | `integer` (game currency)           |    ✅     | Cash credited on a fulfilled-on-time delivery. A late delivery receives `basePayout * LATE_DELIVERY_PAYOUT_MULTIPLIER`.     |
-| `tags`                | `string[]`                          |    ⬜     | Free-form labels, e.g. `chinese`, `italian`. Reserved for the cuisine progression tree (Phase 7+).                          |
+| `id`                  | `string` (lower\_snake\_case)       |    ✓     | Unique identifier. Mod content overrides built-in entries with the same id.                                                 |
+| `displayName`         | `{ [locale: string]: string }`      |    ✓     | Inline localisation; `en` is mandatory, others optional. Resolution falls back through region subtags down to `en`.         |
+| `acceptedRecipeIds`   | `string[]`                          |    ✓     | Recipes this restaurant will order. **First entry is the house dish** and the only one used at spawn time today.            |
+| `basePatienceMinutes` | `integer`                           |    ✓     | Default order patience window in game minutes (drives `Order.deadlineGameMinutes - createdAtGameMinutes`).                  |
+| `basePayout`          | `integer` (game currency)           |    ✓     | Cash credited on a fulfilled-on-time delivery. A late delivery receives `basePayout * LATE_DELIVERY_PAYOUT_MULTIPLIER`.     |
+| `tags`                | `string[]`                          |    ✓     | Free-form labels, e.g. `cantonese`, `dim_sum`, `tier_1`. Reserved for the cuisine progression tree (Phase 7+).              |
 
 `ContentLoader` validates that every `acceptedRecipeIds` entry exists in the recipe registry
 and rejects the file outright if it doesn't — same rule as ingredient → recipe references.
 
 ## Built-in catalogue
 
-| Id                  | Display name (en)   | House dish      | Patience (game min) | Base payout |
-|---------------------|---------------------|-----------------|--------------------:|------------:|
-| `dim_sum_house`     | Dim Sum House       | `garlic_rice`   |                 240 |       1 500 |
-| `garlic_noodle_bar` | Garlic Noodle Bar   | `garlic_rice`   |                 180 |       1 200 |
+| Id              | Display name (en) | House dish     | Other accepted recipes                              | Patience (game min) | Base payout |
+|-----------------|-------------------|----------------|-----------------------------------------------------|--------------------:|------------:|
+| `dim_sum_house` | Dim Sum House     | `cha_siu_bao`  | `har_gow`, `siu_mai`                                |                 240 |         900 |
+| `tea_house`     | Corner Tea House  | `harvest_soy_sauce` | `press_chili_oil`, `grind_white_pepper`, `cha_siu_bao` |             300 |         350 |
 
-> Two templates are intentional in Phase 6: the auto-spawner picks them round-robin so a
-> fresh world ends up with multiple restaurants of each kind, demonstrating that templates
-> drive payout / patience differences.
+> Phase 20 dropped the placeholder `garlic_noodle_bar` template. The two remaining
+> templates differ in payout / patience / menu so the auto-spawner's round-robin
+> assignment produces a visibly varied world.
 
 ## Modding
 

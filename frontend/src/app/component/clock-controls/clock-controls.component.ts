@@ -24,19 +24,30 @@ export class ClockControlsComponent {
 	private readonly clockService = inject(ClockService);
 
 	protected readonly snapshot = this.clockService.snapshot;
+	/** Phase-17: lerped game-minute (refreshes ~6 Hz) so the HH:MM toolbar display
+	 * advances smoothly between authoritative SSE snapshots instead of stepping by
+	 * whole-second jumps even though the wire only ticks once per real second. */
+	private readonly liveGameMinutes = this.clockService.liveGameMinutesSignal;
 
 	/** Non-zero speeds shown as buttons. */
 	protected readonly speeds: readonly number[] = GAME_CONSTANTS.clock.speeds.filter((speed) => speed > 0);
 
 	protected readonly timeLabel = computed(() => {
-		const {minuteOfDay} = this.snapshot();
+		const totalMinutes = Math.floor(this.liveGameMinutes());
+		const minuteOfDay = ((totalMinutes % 1440) + 1440) % 1440;
 		const hours = Math.floor(minuteOfDay / 60);
 		const minutes = minuteOfDay % 60;
 		return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
 	});
 
-	/** "mon" / "tue" / … — joined to the i18n key {@code app.clock.day.<key>}. */
-	protected readonly dayKey = computed(() => DAY_KEYS[this.snapshot().dayOfWeek] ?? "mon");
+	/** "mon" / "tue" / … — joined to the i18n key {@code app.clock.day.<key>}.
+	 * Computed against the live game-minute so it flips at game-midnight even
+	 * between SSE frames at high speed. */
+	protected readonly dayKey = computed(() => {
+		const totalMinutes = Math.floor(this.liveGameMinutes());
+		const liveDay = Math.floor(((totalMinutes / 1440) % 7 + 7) % 7);
+		return DAY_KEYS[liveDay] ?? "mon";
+	});
 
 	protected setSpeed(speed: number): void {
 		this.clockService.setSpeed(speed).subscribe({error: () => undefined});

@@ -9,9 +9,11 @@ import com.dimsumdetours.sim.state.RouteProvider;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import reactor.core.Disposable;
 import reactor.core.scheduler.Schedulers;
 
 import java.util.ArrayList;
@@ -25,15 +27,19 @@ import java.util.concurrent.atomic.AtomicReference;
  * {@link RouteProvider} so it can be slotted into {@link GameState#setRouteProvider}.
  *
  * <p>Loading happens once asynchronously at boot — until the graph arrives the router
- * delegates to {@link RouteProvider#straightLine()} so robots still spawn. After
- * load, A* runs on the simulation thread; the haversine heuristic is admissible
- * (true ground-distance lower bound) so the resulting paths are optimal in metres.
+ * returns {@code null} from {@link #findPath} and the dispatcher simply skips that
+ * spawn until the graph publishes. A* runs on the simulation thread; the haversine
+ * heuristic is admissible (true ground-distance lower bound) so the resulting paths
+ * are optimal in metres.
  *
- * <p>Failure modes that fall back to straight-line:
+ * <p>Failure modes that return {@code null} (no path → caller skips dispatch):
  * <ul>
  *   <li>Graph not yet loaded.</li>
+ *   <li>Source-to-destination straight-line distance exceeds
+ *       {@link GameConstants#MAX_ROBOT_LEG_METERS}.</li>
  *   <li>Source or destination further than
- *       {@link GameConstants#OSM_MAX_SNAP_METERS} from any street node.</li>
+ *       {@link GameConstants#OSM_MAX_SNAP_METERS} from any street node (the
+ *       farm/factory was placed deep inside a country park, etc).</li>
  *   <li>A* exhausts {@link GameConstants#OSM_MAX_ASTAR_EXPANSIONS} without reaching
  *       the goal (disconnected components, malformed data).</li>
  * </ul>
@@ -60,13 +66,18 @@ public class OsmRouter implements RouteProvider {
 	private final AtomicLong fallbackAstarMiss = new AtomicLong();
 	private final AtomicLong lastReportedRoutes = new AtomicLong();
 
+	/** Async graph-load worker handle; tracked so {@link #stop()} can dispose it on
+	 *  context close. Without this, a Spring context shutdown mid-load orphans the
+	 *  Overpass HTTP call on a bounded-elastic thread. */
+	private @org.jspecify.annotations.Nullable Disposable graphLoadSubscription;
+
 	@PostConstruct
 	void start() {
 		// Wire ourselves into the simulation core; until the graph loads we delegate
 		// to straight-line via the early-return in findPath().
 		gameState.setRouteProvider(this);
 		// Async load on a bounded-elastic worker so Spring boot doesn't block on Overpass.
-		Schedulers.boundedElastic().schedule(() -> {
+		graphLoadSubscription = Schedulers.boundedElastic().schedule(() -> {
 			try {
 				long startMs = System.currentTimeMillis();
 				// Phase-17: align the street graph with the active GTFS feed's footprint
@@ -88,6 +99,14 @@ public class OsmRouter implements RouteProvider {
 				log.error("OSM router: graph load threw; staying on straight-line fallback", ex);
 			}
 		});
+	}
+
+	@PreDestroy
+	void stop() {
+		if (graphLoadSubscription != null) {
+			graphLoadSubscription.dispose();
+			graphLoadSubscription = null;
+		}
 	}
 
 	/**
@@ -126,48 +145,60 @@ public class OsmRouter implements RouteProvider {
 	}
 
 	@Override
-	public List<LatLon> findPath(LatLon source, LatLon destination) {
+	public @org.jspecify.annotations.Nullable List<LatLon> findPath(LatLon source, LatLon destination) {
 		double straightLineMeters = GameState.haversineMetres(
 			source.lat(), source.lon(), destination.lat(), destination.lon());
 		if (straightLineMeters > GameConstants.MAX_ROBOT_LEG_METERS) {
 			noteFallback("over-cap", fallbackOverCap, () ->
-				"OSM fallback: trip is " + (long) straightLineMeters
+				"OSM no-path: trip is " + (long) straightLineMeters
 					+ " m, exceeds MAX_ROBOT_LEG_METERS "
-					+ (long) GameConstants.MAX_ROBOT_LEG_METERS + " m");
-			return logAndReturnFallback(source, destination);
+					+ (long) GameConstants.MAX_ROBOT_LEG_METERS + " m — dispatch skipped");
+			maybeReport();
+			return null;
 		}
 		OsmStreetGraph graph = graphRef.get();
 		if (graph.nodeCount() == 0) {
 			noteFallback("graph-empty", fallbackGraphEmpty, () ->
-				"OSM fallback: graph not yet loaded — robot is taking straight line");
-			return logAndReturnFallback(source, destination);
+				"OSM no-path: graph not yet loaded — dispatch skipped");
+			maybeReport();
+			return null;
 		}
 		int sourceIdx = graph.nearestNode(source.lat(), source.lon());
 		int destIdx = graph.nearestNode(destination.lat(), destination.lon());
 		if (sourceIdx < 0 || destIdx < 0) {
 			noteFallback("snap-miss", fallbackSnap, () ->
-				"OSM fallback: no candidate node within snap radius for source/dest");
-			return logAndReturnFallback(source, destination);
+				"OSM no-path: no candidate node within snap radius — dispatch skipped");
+			maybeReport();
+			return null;
 		}
 		double snapSource = graph.nearestNodeDistance(source.lat(), source.lon(), sourceIdx);
 		double snapDest = graph.nearestNodeDistance(destination.lat(), destination.lon(), destIdx);
 		if (snapSource > GameConstants.OSM_MAX_SNAP_METERS
 			|| snapDest > GameConstants.OSM_MAX_SNAP_METERS) {
 			noteFallback("snap-too-far", fallbackSnap, () ->
-				"OSM fallback: building too far from any street — source snap "
+				"OSM no-path: building too far from any street — source snap "
 					+ (long) snapSource + " m, dest snap " + (long) snapDest
-					+ " m, cap " + (long) GameConstants.OSM_MAX_SNAP_METERS + " m");
-			return logAndReturnFallback(source, destination);
+					+ " m, cap " + (long) GameConstants.OSM_MAX_SNAP_METERS
+					+ " m — dispatch skipped");
+			maybeReport();
+			return null;
 		}
 		if (sourceIdx == destIdx) {
-			return straightLine(source, destination);
+			// Both endpoints snap to the same street node — A* would return a
+			// zero-length node path; emit the two-point trip directly. This is
+			// not a "fallback to straight line" because the graph confirmed the
+			// endpoints are co-located on the same routable node.
+			astarRoutes.incrementAndGet();
+			maybeReport();
+			return List.of(source, destination);
 		}
 		IntArrayList nodePath = aStar(graph, sourceIdx, destIdx);
 		if (nodePath == null) {
 			noteFallback("astar-miss", fallbackAstarMiss, () ->
-				"OSM fallback: A* exhausted " + GameConstants.OSM_MAX_ASTAR_EXPANSIONS
-					+ " expansions without reaching the goal — likely disconnected components");
-			return logAndReturnFallback(source, destination);
+				"OSM no-path: A* exhausted " + GameConstants.OSM_MAX_ASTAR_EXPANSIONS
+					+ " expansions — likely disconnected components — dispatch skipped");
+			maybeReport();
+			return null;
 		}
 		List<LatLon> waypoints = new ArrayList<>(nodePath.size() + 2);
 		waypoints.add(source);
@@ -185,8 +216,8 @@ public class OsmRouter implements RouteProvider {
 		return waypoints;
 	}
 
-	/** Counts a fallback and emits an INFO log for the first {@link #FALLBACK_LOG_LIMIT_PER_REASON}
-	 * occurrences of each reason so the operator can SEE why straight-line is happening
+	/** Counts a no-path event and emits an INFO log for the first {@link #FALLBACK_LOG_LIMIT_PER_REASON}
+	 * occurrences of each reason so the operator can SEE why dispatch is being skipped
 	 * without flipping to DEBUG and being drowned in noise. */
 	private void noteFallback(String reason, AtomicLong counter, java.util.function.Supplier<String> message) {
 		long count = counter.incrementAndGet();
@@ -218,7 +249,7 @@ public class OsmRouter implements RouteProvider {
 		if (!lastReportedRoutes.compareAndSet(lastReported, total)) {
 			return;
 		}
-		log.info("OSM router: {} A* routes; fallbacks: graph-empty={}, over-cap={}, snap={}, astar-miss={}",
+		log.info("OSM router: {} A* routes; no-path skips: graph-empty={}, over-cap={}, snap={}, astar-miss={}",
 			routes,
 			fallbackGraphEmpty.get(),
 			fallbackOverCap.get(),
@@ -226,10 +257,6 @@ public class OsmRouter implements RouteProvider {
 			fallbackAstarMiss.get());
 	}
 
-	private List<LatLon> logAndReturnFallback(LatLon source, LatLon destination) {
-		maybeReport();
-		return straightLine(source, destination);
-	}
 
 	/**
 	 * Standard A* with a haversine heuristic. Returns the list of node indices from
@@ -307,9 +334,6 @@ public class OsmRouter implements RouteProvider {
 		return path;
 	}
 
-	private static List<LatLon> straightLine(LatLon source, LatLon destination) {
-		return List.of(source, destination);
-	}
 
 	/** Test seam: inject a pre-built graph (e.g. a hand-rolled fixture). */
 	void setGraphForTesting(OsmStreetGraph graph) {

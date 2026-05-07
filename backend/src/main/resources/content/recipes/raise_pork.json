@@ -1,0 +1,24 @@
+{
+	"id": "raise_pork",
+	"displayName": {
+		"en": "Raise Pork",
+		"zh": "養豬"
+	},
+	"inputs": [],
+	"operations": [
+		"grow"
+	],
+	"outputs": [
+		{
+			"ingredientId": "pork",
+			"quantity": 1
+		}
+	],
+	"minimumFactoryTier": 1,
+	"operationDurationMinutes": 75,
+	"tags": [
+		"farm",
+		"raw"
+	]
+}
+

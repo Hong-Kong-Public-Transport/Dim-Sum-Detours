@@ -112,11 +112,8 @@
 		},
 		"robot": {
 			"title": "Robot",
-			"titleBus": "Bus",
 			"kind": "Vehicle",
 			"kindRobot": "Robot",
-			"kindBus": "Bus (GTFS)",
-			"route": "Route",
 			"cargo": "Cargo",
 			"source": "From",
 			"destination": "To",

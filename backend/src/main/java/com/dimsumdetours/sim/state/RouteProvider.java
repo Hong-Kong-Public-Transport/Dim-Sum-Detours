@@ -1,6 +1,7 @@
 package com.dimsumdetours.sim.state;
 
 import com.dimsumdetours.sim.model.LatLon;
+import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 
@@ -12,17 +13,23 @@ import java.util.List;
  * {@code com.dimsumdetours.osm.routing.OsmRouter} implements this against the
  * OSM street graph; tests inject the trivial straight-line {@link #straightLine()}.
  *
- * <p>Implementations <strong>must</strong> return a non-empty list whose first
- * point is {@code source}, last point is {@code destination}, and every
- * intermediate point is finite and in-range. A pathfinder that fails to find a
- * route should return the straight-line two-point fallback rather than throw —
- * the simulation has no meaningful "vehicle can't move" state today.
+ * <p>Implementations return a non-empty list whose first point is {@code source},
+ * last point is {@code destination}, and every intermediate point is finite and
+ * in-range — or {@code null} when no path can be found (graph not loaded, leg
+ * over the {@code MAX_ROBOT_LEG_METERS} cap, endpoints too far from any street
+ * node, A* expansion budget exhausted). The simulation core treats {@code null}
+ * as "skip dispatch this tick" — robots <strong>never</strong> phase straight-
+ * line through buildings as a silent fallback any more.
  */
 @FunctionalInterface
 public interface RouteProvider {
 
-	/** Compute path waypoints from {@code source} to {@code destination}, inclusive. */
-	List<LatLon> findPath(LatLon source, LatLon destination);
+	/**
+	 * Compute path waypoints from {@code source} to {@code destination}, inclusive.
+	 * Returns {@code null} when no path is available; the caller is expected to
+	 * skip the dispatch (or try a multi-leg plan) rather than guess a straight line.
+	 */
+	@Nullable List<LatLon> findPath(LatLon source, LatLon destination);
 
 	/**
 	 * Trivial provider that returns the straight-line two-point path. Used as the

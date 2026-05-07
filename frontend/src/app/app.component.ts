@@ -15,6 +15,8 @@ import {ClockControlsComponent} from "./component/clock-controls/clock-controls.
 import {MapComponent} from "./component/map/map.component";
 import {MilestoneToastComponent} from "./component/milestone-toast/milestone-toast.component";
 import {type AvailableLanguage, GAME_CONSTANTS, LANGUAGE_LABELS} from "./core/constant/game.constants";
+import {CargoTransitService} from "./core/service/cargo-transit.service";
+import {GameEventService} from "./core/service/game-event.service";
 import {GameService} from "./core/service/game.service";
 import {GtfsService} from "./core/service/gtfs.service";
 import {LanguageService} from "./core/service/language.service";
@@ -55,6 +57,15 @@ export class AppComponent implements OnInit {
 	private readonly gtfsService = inject(GtfsService);
 	private readonly osmService = inject(OsmService);
 	private readonly confirmationService = inject(ConfirmationService);
+	// Phase-19: instantiate the events-stream consumer so it opens its
+	// SSE connection on app boot. Tree-shaken DI won't construct the
+	// service unless something injects it, even with `providedIn: "root"`.
+	private readonly gameEventService = inject(GameEventService);
+	// Phase-21: same instantiation reason for cargo-run accounting. The
+	// service subscribes to {@code CARGO_*} events; we also pump the
+	// cold-boot snapshot into it on app start so a late-joining client
+	// renders scaled-up sprites for runs already in flight.
+	private readonly cargoTransitService = inject(CargoTransitService);
 
 	protected readonly activeLanguage = this.languageService.activeLanguage;
 	protected readonly isDarkTheme = this.themeService.isDarkTheme;
@@ -76,8 +87,23 @@ export class AppComponent implements OnInit {
 		}));
 
 	ngOnInit(): void {
-		// Authoritative balance + buildings from server; keep going on failure (offline-friendly).
-		this.gameService.refreshBalance().subscribe({error: () => undefined});
+		// Phase-19: cold-boot. Pulls the full /api/game/snapshot envelope —
+		// balance + buildings — in a single call. The clock + vehicle + order
+		// + milestone services own their own bootstrap from their respective
+		// SSE streams (each emits a current-state frame on subscribe).
+		this.gameService.bootstrapFromSnapshot().subscribe({
+			next: (snapshot) => {
+				// Phase-21: hydrate the cargo-run map from the snapshot's
+				// {@code cargoTransitRuns} list so transit runs already in
+				// progress at boot render at the correct sprite scale
+				// without waiting for the next CARGO_LOADED frame.
+				this.cargoTransitService.hydrateFromSnapshot(snapshot.cargoTransitRuns);
+			},
+			error: () => undefined,
+		});
+		// Reference the events service so DI doesn't tree-shake it away.
+		void this.gameEventService;
+		void this.cargoTransitService;
 	}
 
 	protected setLanguage(code: AvailableLanguage): void {

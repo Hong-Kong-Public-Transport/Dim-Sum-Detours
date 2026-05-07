@@ -21,14 +21,18 @@ import "leaflet-pixi-overlay";
 import * as Leaflet from "leaflet";
 import * as PIXI from "pixi.js";
 
-import type {Vehicle, VehicleKind} from "../model/vehicle.model";
+import type {Vehicle} from "../model/vehicle.model";
 
 /** Pixi-overlay's render-callback signature (no @types package, so we declare locally). */
 interface PixiOverlayUtils {
 	getContainer(): PIXI.Container;
+
 	getRenderer(): PIXI.IRenderer;
+
 	getMap(): Leaflet.Map;
+
 	getScale(): number;
+
 	latLngToLayerPoint(latlng: Leaflet.LatLngExpression): Leaflet.Point;
 }
 
@@ -44,7 +48,7 @@ interface PixiOverlayFactory {
 	): PixiOverlay;
 }
 
-const pixiOverlayFactory = (Leaflet as unknown as {pixiOverlay: PixiOverlayFactory}).pixiOverlay;
+const pixiOverlayFactory = (Leaflet as unknown as { pixiOverlay: PixiOverlayFactory }).pixiOverlay;
 
 /** Snapshot of a robot's screen position the layer needs each frame. */
 export interface RobotPosition {
@@ -56,13 +60,19 @@ export interface RobotPosition {
 
 export interface RobotPixiLayerCallbacks {
 	/** Resolve a robot's current `{lat, lon}` for the given game-minute. */
-	resolvePosition(vehicle: Vehicle, gameMinutes: number): {readonly lat: number; readonly lon: number};
+	resolvePosition(vehicle: Vehicle, gameMinutes: number): { readonly lat: number; readonly lon: number };
+
 	/** Current game-minute. Read each frame to drive interpolation. */
 	currentGameMinutes(): number;
+
 	/** Snapshot of the live in-flight robots. */
 	currentVehicles(): ReadonlyMap<string, Vehicle>;
+
 	/** Player clicked the visible badge of {@code vehicleId}. */
 	onRobotClick?(vehicleId: string): void;
+
+	/** Phase-19 tooltips: resolve a destination building's display name. */
+	lookupBuildingName?(buildingId: string): string | null;
 }
 
 /**
@@ -90,7 +100,7 @@ export class RobotPixiLayer {
 			// is obvious in the console rather than "robots invisible, no errors".
 			throw new Error(
 				"RobotPixiLayer: leaflet-pixi-overlay plugin failed to attach `L.pixiOverlay` — "
-					+ "check that `import 'leaflet-pixi-overlay'` ran before this file.",
+				+ "check that `import 'leaflet-pixi-overlay'` ran before this file.",
 			);
 		}
 		this.pixiContainer = new PIXI.Container();
@@ -153,6 +163,10 @@ export class RobotPixiLayer {
 		const scale = 1 / utils.getScale(); // counter-zoom so badges stay constant size
 
 		for (const vehicle of vehicles.values()) {
+			// Phase-21: every wire vehicle is a robot — cargo buses live
+			// on the ambient transit overlay (which scales the matching
+			// run sprite when cargo boards). No more per-vehicle BUS
+			// branching here; the kind discriminator is gone.
 			liveIds.add(vehicle.id);
 			const {lat, lon} = this.callbacks.resolvePosition(vehicle, now);
 			const point = utils.latLngToLayerPoint([lat, lon]);
@@ -161,12 +175,12 @@ export class RobotPixiLayer {
 
 			let graphic = this.graphics.get(vehicle.id);
 			if (!graphic) {
-				graphic = RobotPixiLayer.makeBadge(vehicle.kind, spoiled);
-				graphic.zIndex = vehicle.kind === "BUS" ? 11 : 10;
+				graphic = RobotPixiLayer.makeBadge(spoiled);
+				graphic.zIndex = 10;
 				this.graphics.set(vehicle.id, graphic);
 				this.pixiContainer.addChild(graphic);
 			} else {
-				RobotPixiLayer.repaintBadge(graphic, vehicle.kind, spoiled);
+				RobotPixiLayer.repaintBadge(graphic, spoiled);
 			}
 			graphic.position.set(point.x, point.y);
 			graphic.scale.set(scale, scale);
@@ -187,6 +201,13 @@ export class RobotPixiLayer {
 				click.on("click", (event) => {
 					Leaflet.DomEvent.stopPropagation(event);
 					this.callbacks.onRobotClick?.(vehicle.id);
+				});
+				// Phase-19: hover tooltip — destination + cargo summary.
+				click.bindTooltip(() => this.renderVehicleTooltip(vehicle), {
+					direction: "top",
+					offset: [0, -8],
+					opacity: 0.95,
+					sticky: true,
 				});
 				click.addTo(this.clickLayer);
 				this.clickMarkers.set(vehicle.id, click);
@@ -213,29 +234,32 @@ export class RobotPixiLayer {
 		utils.getRenderer().render(this.pixiContainer);
 	}
 
+	/** Render the hover-tooltip body for a cargo robot: destination + cargo summary. */
+	private renderVehicleTooltip(vehicle: Vehicle): string {
+		const destinationName = this.callbacks.lookupBuildingName?.(vehicle.destinationBuildingId)
+			?? vehicle.destinationBuildingId.slice(0, 8);
+		const cargoSummary = Object.entries(vehicle.cargo)
+			.map(([id, qty]) => `${qty}× ${id}`)
+			.join(", ") || "—";
+		return `<strong>Cargo robot</strong>`
+			+ `<div style="opacity:0.85;">→ ${escapeHtml(destinationName)}</div>`
+			+ `<div style="opacity:0.7; font-size: 0.85em;">${escapeHtml(cargoSummary)}</div>`;
+	}
+
 	/**
-	 * Draw a vehicle badge. {@code ROBOT} renders as a soft-blue rounded body with
-	 * an antenna and friendly eyes; {@code BUS} renders as a bigger sunshine-yellow
-	 * rectangle with a windshield strip + window panes so the player can spot the
-	 * GTFS-scheduled middle leg of a multi-leg shipment at a glance. Spoiled cargo
-	 * flips the body to a dark red regardless of kind.
+	 * Draw a robot badge — soft-blue rounded body with an antenna and friendly
+	 * eyes. Spoiled cargo flips the body to a dark red. Phase-21: cargo buses
+	 * are no longer drawn here (they ride the ambient transit overlay), so the
+	 * BUS variant + {@code kind} parameter were dropped.
 	 */
-	private static makeBadge(kind: VehicleKind, spoiled: boolean): PIXI.Graphics {
+	private static makeBadge(spoiled: boolean): PIXI.Graphics {
 		const graphic = new PIXI.Graphics();
-		RobotPixiLayer.repaintBadge(graphic, kind, spoiled);
+		RobotPixiLayer.repaintBadge(graphic, spoiled);
 		return graphic;
 	}
 
-	private static repaintBadge(
-		graphic: PIXI.Graphics,
-		kind: VehicleKind,
-		spoiled: boolean,
-	): void {
+	private static repaintBadge(graphic: PIXI.Graphics, spoiled: boolean): void {
 		graphic.clear();
-		if (kind === "BUS") {
-			RobotPixiLayer.paintBus(graphic, spoiled);
-			return;
-		}
 		RobotPixiLayer.paintRobot(graphic, spoiled);
 	}
 
@@ -265,29 +289,13 @@ export class RobotPixiLayer {
 		graphic.moveTo(-3, 3);
 		graphic.quadraticCurveTo(0, 5, 3, 3);
 	}
+}
 
-	private static paintBus(graphic: PIXI.Graphics, spoiled: boolean): void {
-		const bodyColor = spoiled ? 0x8a1c1c : 0xf5b400;
-		const outline = spoiled ? 0xffd6d6 : 0x222222;
-		const window = spoiled ? 0xffd6d6 : 0xb6e0ff;
-		// Bus body: longer rounded rectangle.
-		graphic.lineStyle(2, outline, 1);
-		graphic.beginFill(bodyColor, 1);
-		graphic.drawRoundedRect(-13, -8, 26, 16, 3);
-		graphic.endFill();
-		// Three side windows.
-		graphic.lineStyle(1, outline, 1);
-		graphic.beginFill(window, 1);
-		graphic.drawRect(-10, -5, 6, 5);
-		graphic.drawRect(-2.5, -5, 6, 5);
-		graphic.drawRect(5, -5, 6, 5);
-		graphic.endFill();
-		// Two wheels (negative-y so they sit at the body bottom).
-		graphic.lineStyle(0);
-		graphic.beginFill(outline, 1);
-		graphic.drawCircle(-7, 8, 2);
-		graphic.drawCircle(7, 8, 2);
-		graphic.endFill();
-	}
+function escapeHtml(input: string): string {
+	return input
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;");
 }
 

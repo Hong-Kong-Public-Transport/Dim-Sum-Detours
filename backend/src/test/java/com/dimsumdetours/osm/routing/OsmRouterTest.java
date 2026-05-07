@@ -9,12 +9,14 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Phase-14 OSM router unit tests. Hand-rolls a tiny 4-node grid graph and verifies
- * the router walks the expected nodes; also verifies the straight-line fallback for
- * out-of-bounds sources and for a graph-less router.
+ * the router walks the expected nodes; also verifies that no path is returned (the
+ * dispatch is meant to be skipped) for a graph-less router and for endpoints too
+ * far from any street node — Phase-17 retired the silent straight-line fallback.
  */
 class OsmRouterTest {
 
@@ -45,12 +47,12 @@ class OsmRouterTest {
 	}
 
 	@Test
-	void straightLineFallbackWhenGraphEmpty() {
+	void noPathReturnedWhenGraphEmpty() {
 		OsmRouter router = new OsmRouter(null, null, null);
-		// graphRef defaults to EMPTY — findPath should never look at the loader/state.
+		// graphRef defaults to EMPTY — findPath should return null so the
+		// dispatcher skips the spawn rather than silently straight-lining.
 		List<LatLon> path = router.findPath(new LatLon(48.0, -122.0), new LatLon(48.001, -121.999));
-		assertEquals(2, path.size());
-		assertEquals(48.0, path.get(0).lat());
+		assertNull(path);
 	}
 
 	@Test
@@ -69,14 +71,15 @@ class OsmRouterTest {
 	}
 
 	@Test
-	void straightLineFallbackWhenSourceTooFarFromAnyNode() {
+	void noPathReturnedWhenSourceTooFarFromAnyNode() {
 		OsmRouter router = new OsmRouter(null, null, null);
 		router.setGraphForTesting(buildGrid());
-		// Several km north of the grid — should exceed the snap threshold.
+		// Several km north of the grid — should exceed the snap threshold AND
+		// the 5 km straight-line cap, both of which now return null.
 		List<LatLon> path = router.findPath(
 			new LatLon(49.0, -122.0),
 			new LatLon(48.001, -121.999));
-		assertEquals(2, path.size());
+		assertNull(path);
 	}
 }
 

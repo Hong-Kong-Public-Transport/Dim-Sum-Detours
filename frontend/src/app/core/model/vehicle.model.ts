@@ -2,13 +2,17 @@
  * Phase-12 vehicle model. Mirrors backend
  * {@code com.dimsumdetours.api.GameController.VehicleDto} +
  * {@code com.dimsumdetours.sim.model.vehicle.VehicleEvent}.
+ *
+ * <p>Phase-21: the backend stopped emitting {@code Bus} payloads — every
+ * {@link Vehicle} on the wire is a robot, and transit cargo flows through
+ * the dedicated {@code CARGO_LOADED} / {@code CARGO_UNLOADED} channel
+ * (see {@code cargo.model.ts}). The {@code kind} / {@code tripId} /
+ * {@code routeId} bus-attribution fields are gone; this file no longer
+ * carries them.
  */
-
-export type VehicleKind = "ROBOT" | "BUS";
 
 export interface Vehicle {
 	readonly id: string;
-	readonly kind: VehicleKind;
 	readonly sourceBuildingId: string;
 	readonly destinationBuildingId: string;
 	readonly cargo: Readonly<Record<string, number>>;
@@ -28,10 +32,6 @@ export interface Vehicle {
 	readonly metersPerGameMinute: number;
 	readonly orderId: string | null;
 	readonly spoilageDeadlineGameMinutes: number | null;
-	/** Phase-16: GTFS trip id when {@link kind} is {@code "BUS"}; null for robots. */
-	readonly tripId: string | null;
-	/** Phase-16: GTFS route id when {@link kind} is {@code "BUS"}; null for robots. */
-	readonly routeId: string | null;
 }
 
 /** Server-emitted vehicle lifecycle events streamed off {@code /api/game/vehicles/stream}. */
@@ -40,10 +40,10 @@ export type VehicleEvent =
 		readonly type: "SPAWNED";
 		readonly gameMinutes: number;
 		/**
-		 * Backend serialises a {@link Vehicle} sealed type (Phase-16: was {@code Robot}-only,
-		 * now {@code Robot} or {@code Bus} for multi-leg GTFS chains). The polymorphic JSON
-		 * carries a {@code "kind"} discriminator. {@link VehicleService.normalise}
-		 * accepts the raw payload and produces a {@link Vehicle}.
+		 * Backend serialises a {@link Vehicle} sealed type (Phase-21:
+		 * {@code Robot}-only after the {@code Bus} deletion). The
+		 * {@link VehicleService.normalise} helper accepts the raw payload
+		 * and produces a {@link Vehicle}.
 		 */
 		readonly vehicle: VehicleWirePayload;
 	}
@@ -54,6 +54,21 @@ export type VehicleEvent =
 		readonly destinationBuildingId: string;
 		readonly orderId: string | null;
 		readonly orderResult: "FULFILLED" | "LATE" | "SPOILED" | null;
+	}
+	| {
+		/**
+		 * Phase-21: a first-mile robot reached its boarding stop and was
+		 * despawned server-side (its cargo flipped into the
+		 * {@code WaitingCargo} queue). Frontend treats this exactly like
+		 * a removal — drop the sprite, no destination credit. Distinct
+		 * from {@code ARRIVED} so the per-event handler doesn't have to
+		 * infer "robot vanished mid-route" from a missing destination.
+		 */
+		readonly type: "ROBOT_ARRIVED_AT_STOP";
+		readonly gameMinutes: number;
+		readonly vehicleId: string;
+		readonly boardingStopId: string;
+		readonly routeId: string;
 	};
 
 /**
@@ -63,7 +78,6 @@ export type VehicleEvent =
  */
 export interface VehicleWirePayload {
 	readonly id: string;
-	readonly kind?: VehicleKind;
 	readonly sourceBuildingId: string;
 	readonly destinationBuildingId: string;
 	readonly cargo: Readonly<Record<string, number>>;
@@ -75,7 +89,4 @@ export interface VehicleWirePayload {
 	readonly metersPerGameMinute?: number;
 	readonly orderId: string | null;
 	readonly spoilageDeadlineGameMinutes: number | null;
-	readonly tripId?: string | null;
-	readonly routeId?: string | null;
 }
-

@@ -1,0 +1,17 @@
+{
+	"id": "shrimp",
+	"displayName": {
+		"en": "Shrimp",
+		"zh": "蝦"
+	},
+	"category": "seafood",
+	"shelfLifeMinutes": 240,
+	"refrigeratable": true,
+	"baseValue": 22,
+	"tags": [
+		"protein",
+		"perishable",
+		"farmable"
+	]
+}
+

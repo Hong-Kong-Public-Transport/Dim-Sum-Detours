@@ -1,0 +1,17 @@
+{
+	"id": "pork",
+	"displayName": {
+		"en": "Pork",
+		"zh": "豬肉"
+	},
+	"category": "meat",
+	"shelfLifeMinutes": 360,
+	"refrigeratable": true,
+	"baseValue": 18,
+	"tags": [
+		"protein",
+		"perishable",
+		"farmable"
+	]
+}
+

@@ -6,7 +6,11 @@
 	},
 	"inputs": [
 		{
-			"ingredientId": "cooked_rice",
+			"ingredientId": "shrimp",
+			"quantity": 1
+		},
+		{
+			"ingredientId": "flour",
 			"quantity": 1
 		},
 		{

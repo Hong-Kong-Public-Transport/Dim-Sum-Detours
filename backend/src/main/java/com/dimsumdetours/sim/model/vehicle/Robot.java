@@ -9,15 +9,24 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * A small autonomous courier. Walks streets at {@link GameConstants#ROBOT_METERS_PER_GAME_MINUTE}
- * (≈ 10 km/h, casual biking pace — slower than a bus, faster than the previous walker
- * model). One robot carries one ingredient kind at a time.
+ * A small autonomous courier. Walks streets at
+ * {@link GameConstants#ROBOT_METERS_PER_GAME_MINUTE} (≈ 10 km/h, casual
+ * biking pace). One robot carries one ingredient kind at a time.
  *
- * <p>Phase-16: a robot may carry an optional {@link VehicleHandoff handoff} that fires
- * when it arrives at its (interim) destination — typically a GTFS boarding stop. The
- * handoff causes the engine to despawn this robot and spawn a {@link Bus} carrying the
- * same cargo, so the cargo flows through the multi-leg plan without ever leaving
- * server state.
+ * <p>Phase-21: a robot may carry an optional {@link TransitBoarding
+ * boarding} that flips it into "first-mile to a transit stop" mode.
+ * On arrival at the stop the boarding state machine in
+ * {@code GameState.advanceVehicles} drains the cargo into a
+ * {@link WaitingCargo} keyed by {@code (boardingStopId, routeId)} —
+ * the cargo never reaches the planned destination directly. Replaces
+ * the recursive {@code VehicleHandoff} chain that the legacy planner
+ * used to splice into a robot/bus/robot triple.
+ *
+ * <p>{@code boarding == null} means a regular delivery — the robot
+ * applies its cargo to {@link #destinationBuildingId()} on arrival
+ * (input stockpile for factories, fulfil/spoil for restaurant orders).
+ * That covers both direct shipments (no transit) and connecting-leg
+ * robots spawned by the alighting scan after a manifest unloads.
  */
 public record Robot(
 	UUID id,
@@ -30,7 +39,7 @@ public record Robot(
 	long arrivesAtGameMinutes,
 	@Nullable UUID orderId,
 	@Nullable Long spoilageDeadlineGameMinutes,
-	@Nullable VehicleHandoff handoff
+	@Nullable TransitBoarding boarding
 ) implements Vehicle {
 
 	public Robot {
@@ -57,11 +66,6 @@ public record Robot(
 					+ spawnedAtGameMinutes + " / " + departsAtGameMinutes
 					+ " / " + arrivesAtGameMinutes);
 		}
-	}
-
-	@Override
-	public VehicleKind kind() {
-		return VehicleKind.ROBOT;
 	}
 
 	@Override

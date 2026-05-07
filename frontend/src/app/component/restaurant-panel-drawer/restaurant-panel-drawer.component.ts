@@ -94,7 +94,10 @@ export class RestaurantPanelDrawerComponent {
 			return [];
 		}
 		const allOrders = this.restaurantService.orders();
-		const now = this.clockService.snapshot().gameMinutes;
+		// Phase-17: read the lerped game-minute so order patience bars + remaining-minute
+		// labels advance smoothly between authoritative SSE snapshots instead of
+		// stepping by whole-second jumps.
+		const now = this.clockService.liveGameMinutesSignal();
 		// Phase-12: an order is "awaiting supply" iff no in-flight robot is carrying it.
 		// The server's VehicleDispatcher retries each tick, so the moment a producer
 		// completes a cycle a robot will spawn and this flag will flip on the next render.
@@ -120,7 +123,7 @@ export class RestaurantPanelDrawerComponent {
 		const remaining = Math.max(0, order.deadlineGameMinutes - now);
 		const percent = Math.max(0, Math.min(100, Math.round((remaining / total) * 100)));
 		const severity: OrderRow["severity"] = percent > 50 ? "success" : percent > 20 ? "warn" : "danger";
-		return {order, remainingPercent: percent, minutesRemaining: remaining, severity, awaitingSupply};
+		return {order, remainingPercent: percent, minutesRemaining: Math.round(remaining), severity, awaitingSupply};
 	}
 }
 

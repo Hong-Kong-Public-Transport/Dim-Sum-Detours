@@ -112,11 +112,8 @@
 		},
 		"robot": {
 			"title": "機械人",
-			"titleBus": "巴士",
 			"kind": "載具",
 			"kindRobot": "機械人",
-			"kindBus": "巴士 (GTFS)",
-			"route": "路線",
 			"cargo": "載貨",
 			"source": "起點",
 			"destination": "終點",

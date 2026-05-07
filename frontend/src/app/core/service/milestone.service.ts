@@ -3,6 +3,7 @@ import {DestroyRef, inject, Injectable, signal} from "@angular/core";
 import {Observable, tap} from "rxjs";
 
 import type {Milestone, MilestoneEvent, MilestonesResponse} from "../model/milestone.model";
+import {ServerEventBusService} from "./server-event-bus.service";
 
 /**
  * Phase-8 task 7 milestone tracker. Mirrors the backend {@code MilestoneTracker} via:
@@ -20,6 +21,7 @@ import type {Milestone, MilestoneEvent, MilestonesResponse} from "../model/miles
 @Injectable({providedIn: "root"})
 export class MilestoneService {
 	private readonly httpClient = inject(HttpClient);
+	private readonly bus = inject(ServerEventBusService);
 	private readonly destroyRef = inject(DestroyRef);
 
 	private readonly _milestones = signal<readonly Milestone[]>([]);
@@ -30,14 +32,21 @@ export class MilestoneService {
 	readonly fulfilledCount = this._fulfilledCount.asReadonly();
 	readonly lastEvent = this._lastEvent.asReadonly();
 
-	private eventSource?: EventSource;
-
 	constructor() {
 		this.refresh().subscribe({error: () => undefined});
-		this.openStream();
-		this.destroyRef.onDestroy(() => {
-			this.eventSource?.close();
+		// Phase-19 Phase-G: subscribe to the unified server-event bus instead
+		// of opening a dedicated /api/game/milestones/stream EventSource.
+		const subscription = this.bus.milestone$.subscribe((parsed) => {
+			this._lastEvent.set(parsed);
+			// Optimistically flip the unlock flag so a slow refresh doesn't dim the
+			// trophy banner before the snapshot endpoint catches up.
+			this._milestones.update((list) => list.map((milestone) =>
+				milestone.id === parsed.milestone
+					? {...milestone, unlocked: true, unlockedAtGameMinutes: parsed.gameMinutes}
+					: milestone,
+			));
 		});
+		this.destroyRef.onDestroy(() => subscription.unsubscribe());
 	}
 
 	refresh(): Observable<MilestonesResponse> {
@@ -47,32 +56,6 @@ export class MilestoneService {
 				this._fulfilledCount.set(response.fulfilledCount);
 			}),
 		);
-	}
-
-	private openStream(): void {
-		try {
-			this.eventSource = new EventSource("/api/game/milestones/stream");
-			this.eventSource.onmessage = (event) => {
-				try {
-					const parsed = JSON.parse(event.data) as MilestoneEvent;
-					this._lastEvent.set(parsed);
-					// Optimistically flip the unlock flag so a slow refresh doesn't dim the
-					// trophy banner before the snapshot endpoint catches up.
-					this._milestones.update((list) => list.map((milestone) =>
-						milestone.id === parsed.milestone
-							? {...milestone, unlocked: true, unlockedAtGameMinutes: parsed.gameMinutes}
-							: milestone,
-					));
-				} catch {
-					// Malformed frame — ignore.
-				}
-			};
-			this.eventSource.onerror = () => {
-				// Browser auto-reconnects; nothing to do.
-			};
-		} catch {
-			// SSE unavailable (e.g. SSR pre-render); fall back to manual refresh.
-		}
 	}
 }
 

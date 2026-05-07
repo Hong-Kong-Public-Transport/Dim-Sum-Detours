@@ -17,15 +17,12 @@ interface CargoLine {
 
 interface RobotView {
 	readonly id: string;
-	readonly kind: "ROBOT" | "BUS";
 	readonly cargo: readonly CargoLine[];
 	readonly sourceName: string;
 	readonly destinationName: string;
 	readonly etaMinutes: number;
 	readonly progressPercent: number;
 	readonly status: "LOADING" | "TRAVEL";
-	readonly routeId: string | null;
-	readonly tripId: string | null;
 }
 
 /**
@@ -80,8 +77,8 @@ export class RobotDrawerComponent {
 		const source = buildingsById.get(robot.sourceBuildingId);
 		const destination = buildingsById.get(robot.destinationBuildingId);
 
-		const now = this.clockService.snapshot().gameMinutes;
-		const etaMinutes = Math.max(0, robot.arrivesAtGameMinutes - now);
+		const now = this.clockService.liveGameMinutesSignal();
+		const etaMinutes = Math.max(0, Math.round(robot.arrivesAtGameMinutes - now));
 		// Phase-17: progress is measured against the depart→arrive window, not the
 		// spawn→arrive window — while loading, the bar stays at 0%.
 		const status: "LOADING" | "TRAVEL" = now < robot.departsAtGameMinutes ? "LOADING" : "TRAVEL";
@@ -91,15 +88,12 @@ export class RobotDrawerComponent {
 
 		return {
 			id: robot.id,
-			kind: robot.kind,
 			cargo,
 			sourceName: source ? RobotDrawerComponent.buildingLabel(source) : robot.sourceBuildingId,
 			destinationName: destination ? RobotDrawerComponent.buildingLabel(destination) : robot.destinationBuildingId,
 			etaMinutes,
 			progressPercent,
 			status,
-			routeId: robot.routeId,
-			tripId: robot.tripId,
 		};
 	});
 

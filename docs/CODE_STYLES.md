@@ -47,7 +47,7 @@ makes refactor-rename across the file trivial.
 - **TypeScript / Java methods, fields, locals, parameters**: `camelCase`.
 - **TypeScript constants exported from `*.constants.ts`**: `SCREAMING_SNAKE_CASE`.
 - **JSON content `id` fields, category refs, operation refs, tag values**: `lower_snake_case`
-  (e.g. `garlic_powder`, `non_perishable`).
+  (e.g. `cha_siu_bao`, `non_perishable`).
 - **CSS / SCSS class names**: `kebab-case`, prefixed `app-` for app-local utility classes.
 - **Transloco i18n keys**: `camelCase`. Same no-abbreviation rule as identifiers
   (`sidebar.build.placeFactory`, **not** `sidebar.build.placeFct`).
@@ -306,6 +306,44 @@ Treat compiler / IntelliJ / TS-Server / ESLint warnings as errors. If a warning 
 not applicable, suppress it locally with the narrowest possible annotation
 (`@SuppressWarnings("…")`, `// eslint-disable-next-line …`) and a one-line comment explaining
 why. Don't broad-suppress at the file or module level.
+
+### 3.14 Networking — anchor-and-extrapolate
+
+Full architecture in [`docs/NETWORKING.md`](./NETWORKING.md). The rules below are the
+short list of invariants every contributor must obey when adding a new endpoint, event,
+or state mutation.
+
+1. **Every server → client message is a self-contained anchor + payload.** The envelope
+   carries `(serverWallClockMs, gameMinutes, paused, speed, pausedSinceGameMinutes,
+   worldEpoch)` plus event-specific fields. Adding a new SSE / REST endpoint without
+   these fields is a rejection-on-review.
+2. **Reconcile by absolute time + epoch, never by relative ordering.** Every event must
+   carry its own `gameMinutes` so the client can apply it correctly even if it arrives
+   out of order or duplicated. Sequence numbers are forbidden — they couple every event
+   to the channel it travelled on, defeating the point.
+3. **No state polling on the frontend.** Don't wire a `setInterval` /
+   `setTimeout` / per-tick `effect()` HTTP refresh to keep state fresh. The server pushes
+   state changes via `/api/game/events/stream`. If you need a state mutation surfaced to
+   the client, add an event variant to {@link GameEvent}, not a poll.
+4. **Cold-boot via `/api/game/snapshot`, not N small endpoints.** Any new cache-able
+   piece of state must be added to {@link GameSnapshot}. The existing per-resource
+   `/api/game/{buildings,balance,vehicles,orders}` endpoints are kept for fallback /
+   debug only — services should bootstrap from the unified snapshot.
+5. **Extrapolation lives on the client.** Vehicle positions, production-cycle progress,
+   patience countdowns, freshness timers — all derive from `liveGameMinutes()` against
+   server-anchored timestamps. The server NEVER pushes per-tick "moved" events.
+6. **Mutations the server makes must surface as events.** Mutating `GameState` from a
+   REST handler without ensuring the matching `BuildingStateChanged` /
+   `BalanceChanged` event will fire on the next tick is a bug — the diff loop in
+   {@link SimulationEngine#emitDiffedEvents} catches most cases automatically, but
+   verify your changed field is part of the diffed DTO.
+7. **Reset is a regular event.** Bumping `worldEpoch` and emitting `WorldReset` is the
+   only correct way to invalidate client caches. Don't add ad-hoc "version" or
+   "generation" fields to individual DTOs.
+8. **Reconnect is the browser's job.** The `EventSource` auto-reconnects; we don't
+   layer custom backoff. After a long disconnect, services re-cold-boot via
+   {@link GameService.bootstrapFromSnapshot} (triggered by the
+   {@link ClockService.epochCounter} effect on epoch mismatch).
 
 ## 4. Testing
 

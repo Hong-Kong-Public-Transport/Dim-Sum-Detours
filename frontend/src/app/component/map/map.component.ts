@@ -25,8 +25,11 @@ import {RestaurantService} from "../../core/service/restaurant.service";
 import {RestaurantSpawnerService} from "../../core/service/restaurant-spawner.service";
 import {ThemeService} from "../../core/service/theme.service";
 import {VehicleService} from "../../core/service/vehicle.service";
+import {CargoTransitService} from "../../core/service/cargo-transit.service";
 import type {Vehicle} from "../../core/model/vehicle.model";
 import {RobotPixiLayer} from "../../core/service/robot-pixi-layer";
+import {TransitOverlayLayer} from "../../core/service/transit-overlay-layer";
+import {TransitService} from "../../core/service/transit.service";
 import {formatMoney} from "../../core/utility/format-locale";
 import {isValidPlacement, respectsSpacing} from "../../core/utility/placement-validator";
 import {FactoryOperationsDrawerComponent} from "../factory-operations-drawer/factory-operations-drawer.component";
@@ -86,7 +89,9 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 	private readonly restaurantSpawner = inject(RestaurantSpawnerService);
 	private readonly themeService = inject(ThemeService);
 	private readonly vehicleService = inject(VehicleService);
+	private readonly transitService = inject(TransitService);
 	private readonly translocoService = inject(TranslocoService);
+	private readonly cargoTransitService = inject(CargoTransitService);
 
 	protected readonly ingredients = signal<readonly Ingredient[]>([]);
 	protected readonly recipes = signal<readonly Recipe[]>([]);
@@ -206,6 +211,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 	/** Phase-12: WebGL-backed robot overlay. Rendered on its own Pixi container so
 	 * the moving badges don't trash Leaflet's DOM marker pane every frame. */
 	private robotLayer?: RobotPixiLayer;
+	/** Phase-18: ambient transit overlay (stops + buses). Lazy-initialised in
+	 * {@link initializeMap}; populated when the {@link TransitService} snapshot
+	 * effect fires. LOD-gated by zoom inside the layer. */
+	private transitOverlay?: TransitOverlayLayer;
 	/** Per-building Leaflet marker reference. Lets us update the production-progress CSS
 	 * variable each tick without recreating the marker (which would clobber tooltips +
 	 * any in-flight click handlers). */
@@ -216,9 +225,11 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 	/** Cached "stalled" flag per factory marker — see {@link markerClosedState}. */
 	private readonly markerStalledState = new Map<string, boolean>();
 	/** Last wall-clock millisecond on which {@link gameService#refreshBuildings} ran;
-	 * gates the polling effect so the producedUnits counter on the farm/factory drawers
-	 * stays live without spamming the backend on every clock SSE frame (or — worse —
-	 * scaling the poll rate with game speed). */
+	 * gated the pre-Phase-19 polling effect. Phase-19 replaces the polling with
+	 * push-based {@code BUILDING_STATE_CHANGED} events; the field is no longer
+	 * read but is kept as a stub to avoid a sweeping unrelated diff. Remove on
+	 * next touch.
+	 * @deprecated Phase-19. */
 	private lastBuildingsRefreshWallMs = 0;
 	/** Phase-15: requestAnimationFrame handle for the production-progress lerp loop.
 	 * The CSS conic-gradient ring on each farm / factory marker is driven by a
@@ -234,6 +245,15 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 			if (this.tileLayer) {
 				this.tileLayer.setUrl(tileUrl);
 			}
+		});
+
+		// Phase-18: push the GTFS snapshot into the transit overlay once both
+		// have arrived. The overlay itself is created in initializeMap() (it
+		// needs the leaflet map instance); the effect re-fires if the snapshot
+		// is reloaded for any reason.
+		effect(() => {
+			const snapshot = this.transitService.snapshot();
+			this.transitOverlay?.setSnapshot(snapshot);
 		});
 
 		effect(() => {
@@ -298,16 +318,14 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 		// requestAnimationFrame loop in {@link startProgressLerpLoop} that reads
 		// {@link ClockService.liveGameMinutes} so the ring lerps smoothly between
 		// the throttled SSE clock frames instead of stepping once per second.
-		effect(() => {
-			// Track the snapshot signal so this effect re-arms when the clock starts /
-			// stops / changes speed (otherwise the wall-clock guard alone is enough).
-			this.clockService.snapshot();
-			const wallNow = Date.now();
-			if (wallNow - this.lastBuildingsRefreshWallMs >= 2000) {
-				this.lastBuildingsRefreshWallMs = wallNow;
-				this.gameService.refreshBuildings().subscribe({error: () => undefined});
-			}
-		});
+		// Phase-19: removed. The pre-Phase-19 build polled
+		// {@code /api/game/buildings} every ~2 wall-seconds so producedUnits
+		// + cycle anchors stayed fresh between vehicle arrivals. The server
+		// now pushes a {@code BUILDING_STATE_CHANGED} event whenever those
+		// fields change, consumed by {@link GameEventService} →
+		// {@link GameService.applyBuildingState}, so the polling loop is
+		// dead weight. The placeholder field {@code lastBuildingsRefreshWallMs}
+		// is left in place to avoid a sweeping diff; remove on next touch.
 
 		// Re-bind zone tooltips whenever the active language changes — Leaflet caches the
 		// originally-bound text per layer so we have to rebind explicitly.
@@ -362,6 +380,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 			this.progressRafHandle = null;
 		}
 		this.robotLayer?.destroy();
+		this.transitOverlay?.destroy();
 		this.leafletMap?.remove();
 	}
 
@@ -507,8 +526,44 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 				this.selectedRestaurantId.set(null);
 				this.selectedRobotId.set(vehicleId);
 			},
+			// Phase-21: cargo buses no longer ride the robot layer (the
+			// kind discriminator is gone), so the route lookup callback
+			// is gone too. Hover tooltip renders just destination + cargo.
+			lookupBuildingName: (buildingId) => {
+				const building = this.buildings().find((b) => b.id === buildingId);
+				if (!building) return null;
+				const language = this.languageService.activeLanguage();
+				const recipe = this.recipes().find((r) => r.id === building.recipeId);
+				return recipe ? localize(recipe.displayName, language) : building.recipeId;
+			},
 		});
 		this.robotLayer.start();
+
+		// Phase-18: ambient transit overlay (stops layer + Pixi-animated buses).
+		// Created always; the layer no-ops while the snapshot is empty and
+		// applies a zoom-LOD gate internally. The TransitService loads the
+		// snapshot once at boot and we push it in via an effect.
+		this.transitOverlay = new TransitOverlayLayer(
+			this.leafletMap,
+			{
+				currentGameMinutes: () => this.clockService.liveGameMinutes(),
+				snapshot: () => this.transitService.snapshot(),
+				// Phase-21: cargo units aboard a specific transit run, keyed by
+				// {@code (routeId, departureOffset)}. The backend now publishes
+				// authoritative {@code CARGO_LOADED}/{@code CARGO_UNLOADED}
+				// events on the unified SSE stream; {@link CargoTransitService}
+				// maintains the per-run total and exposes O(1) lookup. Replaces
+				// the previous client-side scan over in-flight buses (which had
+				// to reverse-engineer the run key by snapping the bus's
+				// {@code path[0]} to the nearest GTFS stop and subtracting the
+				// stop's arrival offset — fragile and slow at high vehicle
+				// counts).
+				cargoUnitsForRun: (routeId, departureOffset) =>
+					this.cargoTransitService.cargoUnitsForRun(routeId, departureOffset),
+			},
+			GAME_CONSTANTS.map.minTransitRenderZoom,
+		);
+		this.transitOverlay.start();
 
 		this.leafletMap.on("click", (event) => {
 			const kind = this.buildMode();

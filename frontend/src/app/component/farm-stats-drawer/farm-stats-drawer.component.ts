@@ -6,6 +6,7 @@ import {localize} from "../../core/i18n/localize";
 import {Building} from "../../core/model/building.model";
 import {Ingredient} from "../../core/model/ingredient.model";
 import {Operation, Recipe} from "../../core/model/recipe.model";
+import {ClockService} from "../../core/service/clock.service";
 import {LanguageService} from "../../core/service/language.service";
 import {RecipeTileComponent} from "../recipe-tile/recipe-tile.component";
 
@@ -33,6 +34,7 @@ interface FarmView {
 })
 export class FarmStatsDrawerComponent {
 	private readonly languageService = inject(LanguageService);
+	private readonly clockService = inject(ClockService);
 
 	readonly farm = input<Building | null>(null);
 	readonly recipes = input.required<readonly Recipe[]>();
@@ -57,13 +59,29 @@ export class FarmStatsDrawerComponent {
 		const minutes = recipe.operationDurationMinutes;
 		const quantityPerCycle = recipe.outputs[0]?.quantity ?? 1;
 		const ratePerHour = (quantityPerCycle * 60) / Math.max(1, minutes);
+		// Phase-17: lerp the produced-units counter forward between authoritative
+		// building snapshots. Farms can't stall — every cycle that elapsed since the
+		// anchor has finished — so a simple floor((live - anchor) / duration)
+		// extrapolation matches what the server will report on the next refresh.
+		const liveMinutes = this.clockService.liveGameMinutesSignal();
+		const baseProduced = farm.producedUnits ?? 0;
+		const cycleStart = farm.cycleStartedAtGameMinutes ?? -1;
+		const cycleDuration = farm.cycleDurationGameMinutes ?? 0;
+		let livedProduced = baseProduced;
+		if (cycleStart >= 0 && cycleDuration > 0 && liveMinutes > cycleStart) {
+			const extraCycles = Math.max(0, Math.floor((liveMinutes - cycleStart) / cycleDuration));
+			// Match the server's `withProducedAdvance` semantics — one cycle bumps
+			// the integer counter by exactly one regardless of the recipe's per-cycle
+			// output quantity. Snapshot will reconcile on the next refresh.
+			livedProduced = baseProduced + extraCycles;
+		}
 		return {
 			recipe,
 			outputIngredientName: ingredient
 				? localize(ingredient.displayName, language)
 				: (farm.outputIngredientId ?? "—"),
 			ratePerHour: Math.round(ratePerHour * 10) / 10,
-			producedUnits: farm.producedUnits ?? 0,
+			producedUnits: livedProduced,
 		};
 	});
 

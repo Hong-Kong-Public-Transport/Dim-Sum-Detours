@@ -3,6 +3,8 @@ import {DestroyRef, inject, Injectable, signal} from "@angular/core";
 
 import {map, Observable, tap} from "rxjs";
 
+import {ServerEventBusService} from "./server-event-bus.service";
+
 /** Mirrors {@code GameController.OrderDto} on the backend. */
 export interface Order {
 	readonly id: string;
@@ -62,6 +64,7 @@ export type OrderEvent =
 @Injectable({providedIn: "root"})
 export class RestaurantService {
 	private readonly httpClient = inject(HttpClient);
+	private readonly bus = inject(ServerEventBusService);
 	private readonly destroyRef = inject(DestroyRef);
 
 	private readonly _orders = signal<readonly Order[]>([]);
@@ -71,11 +74,14 @@ export class RestaurantService {
 	/** Most recently received {@link OrderEvent}; useful for one-shot toasts. */
 	readonly lastEvent = this._lastEvent.asReadonly();
 
-	private eventSource?: EventSource;
-
 	constructor() {
-		this.openStream();
-		this.destroyRef.onDestroy(() => this.eventSource?.close());
+		// Phase-19 Phase-G: subscribe to the unified server-event bus instead
+		// of opening a dedicated /api/game/orders/stream EventSource.
+		const subscription = this.bus.order$.subscribe((event) => {
+			this.applyEvent(event);
+			this._lastEvent.set(event);
+		});
+		this.destroyRef.onDestroy(() => subscription.unsubscribe());
 	}
 
 	refreshOrders(): Observable<readonly Order[]> {
@@ -126,32 +132,6 @@ export class RestaurantService {
 		return this._orders().filter((order) => order.restaurantId === restaurantId);
 	}
 
-	private openStream(): void {
-		try {
-			this.eventSource = new EventSource("/api/game/orders/stream");
-			this.eventSource.onmessage = (event) => {
-				try {
-					const parsed = JSON.parse(event.data) as OrderEvent;
-					if (typeof parsed.type !== "string") {
-						// Phase-13 regression guard: same lesson as VehicleService — a
-						// missing `type` discriminator means every order frame is silently
-						// dropped and the restaurant drawer appears empty.
-						console.error("order stream frame missing 'type' discriminator", event.data);
-						return;
-					}
-					this.applyEvent(parsed);
-					this._lastEvent.set(parsed);
-				} catch (err) {
-					console.error("order stream frame failed to parse", err, event.data);
-				}
-			};
-			this.eventSource.onerror = (err) => {
-				console.warn("order stream error (browser will auto-reconnect)", err);
-			};
-		} catch (err) {
-			console.error("order stream failed to open", err);
-		}
-	}
 
 	private applyEvent(event: OrderEvent): void {
 		switch (event.type) {

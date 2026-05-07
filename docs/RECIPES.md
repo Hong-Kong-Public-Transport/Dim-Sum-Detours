@@ -7,22 +7,23 @@ mod-overridable from `data/mods/<mod-name>/recipes/`.
 
 ```jsonc
 {
-	"id": "garlic_salt",
+	"id": "cha_siu_bao",
 	"displayName": {
-		"en": "Garlic Salt",
-		"zh": "蒜鹽"
+		"en": "Steam Cha Siu Bao",
+		"zh": "蒸叉燒包"
 	},
 	"inputs": [
-		{ "ingredientId": "garlic_powder", "quantity": 1 },
-		{ "ingredientId": "salt",          "quantity": 2 }
+		{ "ingredientId": "pork",      "quantity": 1 },
+		{ "ingredientId": "flour",     "quantity": 1 },
+		{ "ingredientId": "soy_sauce", "quantity": 1 }
 	],
-	"operations": ["mix"],              // ordered list of operation ids (lower_snake_case)
+	"operations": ["mix", "steam"],     // ordered list of operation ids (lower_snake_case)
 	"outputs": [
-		{ "ingredientId": "garlic_salt", "quantity": 3 }
+		{ "ingredientId": "cha_siu_bao", "quantity": 1 }
 	],
 	"minimumFactoryTier": 1,            // 1 = T1 (3 op-slots)
-	"operationDurationMinutes": 15,     // total game-minutes per execution
-	"tags": ["seasoning"]
+	"operationDurationMinutes": 25,     // total game-minutes per execution
+	"tags": ["dish", "dim_sum"]
 }
 ```
 
@@ -35,36 +36,40 @@ The content loader **rejects** a recipe when:
 - `operations` is empty (a recipe must run at least one operation)
 
 `inputs` **may be empty** — that's how farm/harvest recipes work: they take nothing from the
-world and produce a raw ingredient (e.g. `grow_garlic`, `harvest_salt`). Such recipes should
-also carry the `"farm"` tag so the placement UI offers them under "Place farm" rather than
-"Place factory".
+world and produce a raw ingredient (e.g. `raise_pork`, `mill_flour`, `harvest_salt`). Such
+recipes should also carry the `"farm"` tag so the placement UI offers them under "Place
+farm" rather than "Place factory".
 
 Failures log a warning and the recipe is skipped — the game still starts.
 
-## Phase 1 recipe catalogue
+## Recipe catalogue
 
 ### Farm / harvest recipes (no inputs, tagged `farm`)
 
-| ID             | en           | Operation | Output     | Min. tier | Duration |
-|----------------|--------------|-----------|------------|:---------:|---------:|
-| `grow_garlic`  | Grow Garlic  | grow      | 1× garlic  |     1     |   60 min |
-| `grow_rice`    | Grow Rice    | grow      | 1× rice    |     1     |   60 min |
-| `harvest_salt` | Harvest Salt | harvest   | 1× salt    |     1     |   30 min |
+| ID                    | en                 | Operation | Output         | Min. tier | Duration |
+|-----------------------|--------------------|-----------|----------------|:---------:|---------:|
+| `raise_pork`          | Raise Pork         | grow      | 1× pork        |     1     |   75 min |
+| `catch_shrimp`        | Catch Shrimp       | harvest   | 1× shrimp      |     1     |   60 min |
+| `mill_flour`          | Mill Flour         | grow      | 2× flour       |     1     |   50 min |
+| `grow_rice`           | Grow Rice          | grow      | 1× rice        |     1     |   90 min |
+| `harvest_salt`        | Harvest Salt       | harvest   | 1× salt        |     1     |   45 min |
+| `harvest_soy_sauce`   | Harvest Soy Sauce  | grow      | 2× soy_sauce   |     1     |   45 min |
+| `press_chili_oil`     | Press Chili Oil    | grow      | 2× chili_oil   |     1     |   50 min |
+| `grind_white_pepper`  | Grind White Pepper | grow      | 2× white_pepper|     1     |   40 min |
 
 ### Factory recipes
 
-| ID                  | en                 | Inputs                          | Operations | Output               | Min. tier | Duration |
-|---------------------|--------------------|---------------------------------|------------|----------------------|:---------:|---------:|
-| `dehydrated_garlic` | Dehydrated Garlic  | 2× garlic                       | dehydrate  | 1× dehydrated_garlic |     1     |   60 min |
-| `garlic_powder`     | Garlic Powder      | 1× dehydrated_garlic            | powderize  | 1× garlic_powder     |     1     |   20 min |
-| `garlic_salt`       | Garlic Salt        | 1× garlic_powder + 2× salt      | mix        | 3× garlic_salt       |     1     |   15 min |
-| `cooked_rice`       | Cooked Rice        | 1× rice                         | steam      | 1× cooked_rice       |     1     |   30 min |
-| `garlic_rice`       | Garlic Rice (dish) | 1× cooked_rice + 1× garlic_salt | mix        | 1× garlic_rice       |     1     |   10 min |
+| ID            | en                  | Inputs                                                    | Operations         | Output             | Min. tier | Duration |
+|---------------|---------------------|-----------------------------------------------------------|--------------------|--------------------|:---------:|---------:|
+| `cooked_rice` | Cooked Rice         | 1× rice                                                   | steam              | 1× cooked_rice     |     1     |   45 min |
+| `cha_siu_bao` | Steam Cha Siu Bao   | 1× pork  + 1× flour + 1× soy_sauce                        | mix, steam         | 1× cha_siu_bao     |     1     |   25 min |
+| `siu_mai`     | Steam Siu Mai       | 1× pork  + 1× flour + 1× chili_oil                        | mix, steam         | 1× siu_mai         |     1     |   28 min |
+| `har_gow`     | Steam Har Gow       | 1× shrimp + 1× flour + 1× white_pepper                    | mix, steam         | 1× har_gow         |     1     |   30 min |
 
 ## Operations (also JSON-defined)
 
 Located under `backend/src/main/resources/content/operations/`. IDs:
-`grow`, `harvest`, `chop`, `cook`, `steam`, `boil`, `grill`, `dehydrate`, `powderize`, `mix`, `filter`.
+`grow`, `harvest`, `chop`, `cook`, `steam`, `boil`, `grill`, `mix`, `filter`.
 
 ### Reordering on placed factories (Phase 5)
 
@@ -86,12 +91,20 @@ A factory's tier determines how many operations it can host on its op-graph:
 ## Chained recipes form a tree
 
 ```
-garlic ──► dehydrated_garlic ──► garlic_powder ──┐
-                                                 ├──► garlic_salt ──┐
-salt ────────────────────────────────────────────┘                  │
-                                                                    ├──► garlic_rice (dish)
-rice ──► cooked_rice ───────────────────────────────────────────────┘
+pork ─────┐
+          ├──► cha_siu_bao  (mix + steam)
+flour ────┤
+          ├──► siu_mai      (mix + steam)
+shrimp ───┤
+          └──► har_gow      (mix + steam)
+soy_sauce ──► cha_siu_bao
+chili_oil ──► siu_mai
+white_pepper ► har_gow
+
+rice ──► cooked_rice    (orphan side-tier; future congee dish)
+salt                    (orphan; reserved for upcoming dough recipe)
 ```
 
 The cooking-tree progression unlocks descendant recipes once you have produced an ancestor
 recipe N times (configured in a future `unlocks/` content folder).
+

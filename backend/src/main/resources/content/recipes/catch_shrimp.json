@@ -1,16 +1,16 @@
 {
-	"id": "grow_garlic",
+	"id": "catch_shrimp",
 	"displayName": {
-		"en": "Grow Garlic",
-		"zh": "種植蒜頭"
+		"en": "Catch Shrimp",
+		"zh": "捕蝦"
 	},
 	"inputs": [],
 	"operations": [
-		"grow"
+		"harvest"
 	],
 	"outputs": [
 		{
-			"ingredientId": "garlic",
+			"ingredientId": "shrimp",
 			"quantity": 1
 		}
 	],
@@ -21,3 +21,4 @@
 		"raw"
 	]
 }
+

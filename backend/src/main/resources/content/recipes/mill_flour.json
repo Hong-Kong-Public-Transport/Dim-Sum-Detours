@@ -1,0 +1,24 @@
+{
+	"id": "mill_flour",
+	"displayName": {
+		"en": "Mill Flour",
+		"zh": "磨麵粉"
+	},
+	"inputs": [],
+	"operations": [
+		"grow"
+	],
+	"outputs": [
+		{
+			"ingredientId": "flour",
+			"quantity": 2
+		}
+	],
+	"minimumFactoryTier": 1,
+	"operationDurationMinutes": 50,
+	"tags": [
+		"farm",
+		"raw"
+	]
+}
+

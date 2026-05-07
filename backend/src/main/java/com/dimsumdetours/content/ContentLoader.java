@@ -10,6 +10,8 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.core.io.support.ResourcePatternResolver;
@@ -51,6 +53,7 @@ public class ContentLoader {
 	private final ResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
 
 	@EventListener(ApplicationReadyEvent.class)
+	@Order(Ordered.HIGHEST_PRECEDENCE)
 	public void loadAll() {
 		registry.clear();
 

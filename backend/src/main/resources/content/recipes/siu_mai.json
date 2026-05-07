@@ -6,7 +6,11 @@
 	},
 	"inputs": [
 		{
-			"ingredientId": "cooked_rice",
+			"ingredientId": "pork",
+			"quantity": 1
+		},
+		{
+			"ingredientId": "flour",
 			"quantity": 1
 		},
 		{

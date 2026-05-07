@@ -423,6 +423,7 @@ rather than how it got built.
 
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — phase-by-phase task breakdowns + playtest notes
 - [`docs/CODE_STYLES.md`](docs/CODE_STYLES.md) — naming, formatting, and architecture rules
+- [`docs/NETWORKING.md`](docs/NETWORKING.md) — server↔client architecture: anchor-and-extrapolate envelope, event taxonomy, cold-boot/reconnect/reset semantics
 - [`docs/INGREDIENTS.md`](docs/INGREDIENTS.md) — full ingredient catalogue + JSON schema
 - [`docs/RECIPES.md`](docs/RECIPES.md) — full recipe catalogue + JSON schema
 - [`docs/RESTAURANTS.md`](docs/RESTAURANTS.md) — restaurant template schema, lifecycle, and modding rules

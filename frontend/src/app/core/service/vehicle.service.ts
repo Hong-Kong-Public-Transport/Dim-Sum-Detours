@@ -4,6 +4,7 @@ import {DestroyRef, effect, inject, Injectable, signal} from "@angular/core";
 import {GAME_CONSTANTS} from "../constant/game.constants";
 import type {Vehicle, VehicleEvent, VehicleWirePayload} from "../model/vehicle.model";
 import {GameService} from "./game.service";
+import {ServerEventBusService} from "./server-event-bus.service";
 
 /**
  * Phase-12 vehicle renderer. Subscribes to {@code /api/game/vehicles/stream} for
@@ -20,27 +21,16 @@ import {GameService} from "./game.service";
 export class VehicleService {
 	private readonly httpClient = inject(HttpClient);
 	private readonly gameService = inject(GameService);
+	private readonly bus = inject(ServerEventBusService);
 	private readonly destroyRef = inject(DestroyRef);
 
 	private readonly _vehicles = signal<ReadonlyMap<string, Vehicle>>(new Map());
 	readonly vehicles = this._vehicles.asReadonly();
 
-	private eventSource: EventSource | null = null;
-
-	/** Phase-15: wall-clock throttle for the post-arrival {@code refreshBuildings} /
-	 * {@code refreshBalance} HTTP fan-out. At 256× game speed dozens of robots can
-	 * arrive per real second; the previous implementation fired one HTTP pair per
-	 * arrival, which spammed the network panel. We now coalesce all arrivals within
-	 * a {@link REFRESH_DEBOUNCE_MS} wall-clock window into a single trailing-edge
-	 * refresh so the bandwidth stays constant regardless of game speed. */
-	private static readonly REFRESH_DEBOUNCE_MS = 1000;
-	private buildingsDirty = false;
-	private balanceDirty = false;
-	private refreshTimer: ReturnType<typeof setTimeout> | null = null;
-
 	constructor() {
 		this.refreshSnapshot();
-		this.openStream();
+		// Phase-19 Phase-G: subscribe to the unified server-event bus.
+		const subscription = this.bus.vehicle$.subscribe((event) => this.applyEvent(event));
 		// Drop every cached robot the moment GameService bumps the reset counter — the
 		// backend will re-emit any post-reset SPAWNED events on the SSE stream, so we
 		// can't fall behind by clearing eagerly.
@@ -52,13 +42,9 @@ export class VehicleService {
 				return;
 			}
 			this._vehicles.set(new Map());
+			this.refreshSnapshot();
 		});
-		this.destroyRef.onDestroy(() => {
-			this.eventSource?.close();
-			if (this.refreshTimer !== null) {
-				clearTimeout(this.refreshTimer);
-			}
-		});
+		this.destroyRef.onDestroy(() => subscription.unsubscribe());
 	}
 
 	/**
@@ -132,29 +118,6 @@ export class VehicleService {
 		this._vehicles.set(new Map());
 	}
 
-	private openStream(): void {
-		// Reuse the dev proxy: the EventSource hits /api/game/... on the same origin.
-		this.eventSource = new EventSource("/api/game/vehicles/stream");
-		this.eventSource.onmessage = (message) => {
-			try {
-				const event = JSON.parse(message.data) as VehicleEvent;
-				if (typeof event.type !== "string") {
-					// Phase-13 regression guard: if the wire payload is missing the `type`
-					// discriminator (e.g. backend serialisation regression), log loudly so
-					// it doesn't silently drop every spawn/arrive event the way the pre-fix
-					// build did.
-					console.error("vehicle stream frame missing 'type' discriminator", message.data);
-					return;
-				}
-				this.applyEvent(event);
-			} catch (err) {
-				console.error("vehicle stream frame failed to parse", err, message.data);
-			}
-		};
-		this.eventSource.onerror = (err) => {
-			console.warn("vehicle stream error (browser will auto-reconnect)", err);
-		};
-	}
 
 	private applyEvent(event: VehicleEvent): void {
 		if (event.type === "SPAWNED") {
@@ -164,7 +127,12 @@ export class VehicleService {
 				next.set(vehicle.id, vehicle);
 				return next;
 			});
-		} else if (event.type === "ARRIVED") {
+		} else if (event.type === "ARRIVED" || event.type === "ROBOT_ARRIVED_AT_STOP") {
+			// Phase-21: ARRIVED credits the destination building (handled
+			// server-side); ROBOT_ARRIVED_AT_STOP is the first-mile robot
+			// despawning the moment it reaches the boarding stop (cargo flips
+			// into the server-side WaitingCargo queue, no destination credit).
+			// Both reduce to the same client-side action: drop the sprite.
 			this._vehicles.update((map) => {
 				if (!map.has(event.vehicleId)) {
 					return map;
@@ -173,33 +141,12 @@ export class VehicleService {
 				next.delete(event.vehicleId);
 				return next;
 			});
-			// An arrival changes building state (factory stockpile or restaurant
-			// reputation/balance). Coalesce refreshes within a wall-clock window so
-			// 256× speed (where dozens of arrivals can land per real second) doesn't
-			// spam the network panel.
-			this.buildingsDirty = true;
-			if (event.orderId !== null) {
-				this.balanceDirty = true;
-			}
-			this.scheduleRefreshFlush();
+			// Phase-19: cargo arrival mutations (factory stockpile, restaurant
+			// reputation, balance) are now pushed by the server on
+			// {@code /api/game/events/stream} as {@code BUILDING_STATE_CHANGED}
+			// + {@code BALANCE_CHANGED} in the same tick. We no longer poll
+			// {@code /api/game/buildings} or {@code /api/game/balance} here.
 		}
-	}
-
-	private scheduleRefreshFlush(): void {
-		if (this.refreshTimer !== null) {
-			return;
-		}
-		this.refreshTimer = setTimeout(() => {
-			this.refreshTimer = null;
-			if (this.buildingsDirty) {
-				this.buildingsDirty = false;
-				this.gameService.refreshBuildings().subscribe({error: () => undefined});
-			}
-			if (this.balanceDirty) {
-				this.balanceDirty = false;
-				this.gameService.refreshBalance().subscribe({error: () => undefined});
-			}
-		}, VehicleService.REFRESH_DEBOUNCE_MS);
 	}
 
 	/**
@@ -217,7 +164,6 @@ export class VehicleService {
 		});
 		return {
 			id: payload.id,
-			kind: payload.kind ?? "ROBOT",
 			sourceBuildingId: payload.sourceBuildingId,
 			destinationBuildingId: payload.destinationBuildingId,
 			cargo: payload.cargo,
@@ -228,8 +174,6 @@ export class VehicleService {
 			metersPerGameMinute: payload.metersPerGameMinute ?? GAME_CONSTANTS.robot.metersPerGameMinute,
 			orderId: payload.orderId,
 			spoilageDeadlineGameMinutes: payload.spoilageDeadlineGameMinutes,
-			tripId: payload.tripId ?? null,
-			routeId: payload.routeId ?? null,
 		};
 	}
 }

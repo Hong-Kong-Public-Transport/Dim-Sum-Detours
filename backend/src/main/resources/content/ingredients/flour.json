@@ -1,0 +1,17 @@
+{
+	"id": "flour",
+	"displayName": {
+		"en": "Wheat Flour",
+		"zh": "麵粉"
+	},
+	"category": "grain",
+	"shelfLifeMinutes": -1,
+	"refrigeratable": false,
+	"baseValue": 6,
+	"tags": [
+		"staple",
+		"non_perishable",
+		"farmable"
+	]
+}
+

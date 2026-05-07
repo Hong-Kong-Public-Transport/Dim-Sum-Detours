@@ -181,16 +181,123 @@ public class GameController {
 	}
 
 	/**
-	 * Wipes the in-memory game state and restores the starting balance. Phase 3: returns 204.
-	 * Future phases may persist a snapshot before reset to support undo.
+	 * Phase-19: catch-all events SSE — wallet mutations, building state
+	 * changes, restaurant closures, world resets. Replaces the pre-Phase-19
+	 * model where the frontend polled {@code /api/game/buildings} + {@code
+	 * /api/game/balance} after every vehicle arrival. See
+	 * {@code docs/NETWORKING.md}.
+	 */
+	@GetMapping(path = "/events/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+	public Flux<GameEvent> gameEventStream() {
+		return engine.gameEventStream();
+	}
+
+	/**
+	 * Phase-19 Phase-G: the unified server → client SSE channel. Every event
+	 * the frontend reacts to — clock anchors, vehicle/order/milestone
+	 * lifecycle, catch-all game events — multiplexed onto one connection
+	 * so the browser's 6-per-origin SSE cap stays comfortably out of reach.
+	 *
+	 * <p>The legacy per-channel endpoints above are kept for backward
+	 * compatibility, debug ergonomics, and integration tests; production
+	 * clients open only this one. See {@code docs/NETWORKING.md} § Channels.
+	 */
+	@GetMapping(path = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+	public Flux<ServerEvent> serverEventStream() {
+		return engine.serverEventStream();
+	}
+
+	/**
+	 * Phase-19: full state envelope for cold-boot and disconnect-recovery.
+	 * The frontend hits this once on first load and again whenever any
+	 * received envelope's {@code worldEpoch} doesn't match the cached one
+	 * (server reset, lost-and-reconnected SSE that may have missed the
+	 * reset). Bundles every cache-able piece of state in one payload so the
+	 * client can re-render without N additional round-trips.
+	 */
+	@GetMapping("/snapshot")
+	public Mono<GameSnapshot> getSnapshot() {
+		return Mono.fromSupplier(this::buildSnapshot);
+	}
+
+	private GameSnapshot buildSnapshot() {
+		GameState.ClockSnapshot clock = gameState.getClockSnapshot();
+		List<BuildingDto> buildings = gameState.listBuildings().stream()
+			.map(b -> BuildingDto.from(b, registry))
+			.toList();
+		List<VehicleDto> vehicles = gameState.listVehicles().stream()
+			.map(VehicleDto::from)
+			.toList();
+		List<OrderDto> orders = gameState.listAllOrders().stream()
+			.map(OrderDto::from)
+			.toList();
+		MilestoneTracker.Snapshot ms = engine.milestoneTracker().snapshot();
+		List<MilestoneDto> milestones = new java.util.ArrayList<>();
+		for (Milestone milestone : Milestone.values()) {
+			boolean unlocked = ms.unlocked().contains(milestone);
+			Long unlockedAt = ms.unlockedAtGameMinutes().get(milestone);
+			milestones.add(new MilestoneDto(milestone.name(), unlocked, unlockedAt));
+		}
+		return new GameSnapshot(
+			clock,
+			gameState.getBalance().amount(),
+			buildings,
+			vehicles,
+			orders,
+			milestones,
+			ms.fulfilledCount(),
+			cargoTransitRunsDtoList(),
+			waitingCargoDtoList());
+	}
+
+	/** Phase-21: build the cold-boot list of in-flight cargo transit runs from
+	 * {@link GameState#cargoTransitRunsSnapshot()}. The frontend's
+	 * {@code CargoTransitService} hydrates its run-units map from this list
+	 * so a late-joining or epoch-mismatched client renders scaled-up sprites
+	 * for runs that started before its connection. */
+	private List<CargoTransitRunDto> cargoTransitRunsDtoList() {
+		return gameState.cargoTransitRunsSnapshot().entrySet().stream()
+			.map(e -> new CargoTransitRunDto(
+				e.getKey().routeId(),
+				e.getKey().departureOffsetGameMinutes(),
+				e.getValue()))
+			.toList();
+	}
+
+	/** Phase-21 step 4: cold-boot list of cargo waiting at boarding stops
+	 * for the next ambient transit run, sourced from
+	 * {@link GameState#waitingCargoSnapshot()}. Empty until the boarding
+	 * state machine in step 6 starts populating
+	 * {@code GameState.waitingCargo}. */
+	private List<WaitingCargoDto> waitingCargoDtoList() {
+		return gameState.waitingCargoSnapshot().entrySet().stream()
+			.map(e -> new WaitingCargoDto(
+				e.getKey().boardingStopId(),
+				e.getKey().routeId(),
+				e.getValue()))
+			.toList();
+	}
+
+	/**
+	 * Wipes the in-memory game state and restores the starting balance.
+	 * Phase-19: bumps {@link GameState#worldEpoch()}, returns the full
+	 * post-reset snapshot envelope, and force-pushes an immediate clock SSE
+	 * frame (which carries the new epoch) so any subscribed client notices
+	 * the reset without waiting for the next throttled tick.
 	 */
 	@PostMapping("/reset")
-	public Mono<ResponseEntity<Void>> resetGame() {
-		return Mono.fromRunnable(() -> {
+	public Mono<GameSnapshot> resetGame() {
+		return Mono.fromSupplier(() -> {
 			gameState.reset();
 			orderGenerator.reset();
 			engine.milestoneTracker().reset();
-		}).thenReturn(ResponseEntity.noContent().<Void>build());
+			engine.publishClockSnapshot();
+			GameState.ClockSnapshot clock = gameState.getClockSnapshot();
+			engine.publishGameEvent(new GameEvent.WorldReset(
+				clock.gameMinutes(), clock.serverWallClockMs(),
+				clock.worldEpoch(), "manual-reset"));
+			return buildSnapshot();
+		});
 	}
 
 	// ─── Phase 6: restaurant orders ───────────────────────────────────────
@@ -439,10 +546,64 @@ public class GameController {
 	}
 
 	/**
-	 * Phase-12 vehicle wire shape. Path is serialised as {@code List<double[2]>} so the
-	 * frontend can consume it as plain {@code [lat, lon]} pairs without bringing in a
-	 * dedicated LatLon model. Phase-16 added {@code tripId} / {@code routeId} so the
-	 * frontend drawer can attribute a bus leg ("rode KMB 5A").
+	 * Phase-19: cold-boot envelope returned by {@code GET /api/game/snapshot}
+	 * and {@code POST /api/game/reset}. Bundles every piece of state the
+	 * frontend caches so it can re-render without N round-trips. The clock
+	 * sub-envelope is the source of truth for {@code worldEpoch} +
+	 * {@code serverWallClockMs}.
+	 */
+	public record GameSnapshot(
+		GameState.ClockSnapshot clock,
+		long balance,
+		List<BuildingDto> buildings,
+		List<VehicleDto> vehicles,
+		List<OrderDto> orders,
+		List<MilestoneDto> milestones,
+		long milestoneFulfilledCount,
+		List<CargoTransitRunDto> cargoTransitRuns,
+		List<WaitingCargoDto> waitingCargo
+	) {
+	}
+
+	/**
+	 * Phase-21 step 4 cold-boot wire shape: cargo currently parked at a
+	 * boarding stop waiting for the next ambient run on {@code routeId}.
+	 * Sourced from {@link GameState#waitingCargoSnapshot()}; empty until
+	 * the boarding state machine starts queueing manifests in step 6.
+	 * The frontend uses this to draw a stationary cargo glyph at the
+	 * stop without the client having to replay the SSE event log.
+	 */
+	public record WaitingCargoDto(
+		String boardingStopId,
+		String routeId,
+		int totalCargoUnits
+	) {
+	}
+
+	/**
+	 * Phase-21 cold-boot wire shape: a transit run currently carrying cargo.
+	 * Mirrors {@code com.dimsumdetours.sim.model.vehicle.TransitRunId} plus
+	 * the run's cumulative unit count. The frontend's
+	 * {@code cargo-transit.service.ts} keys its sprite-scale lookup by
+	 * {@code (routeId, departureOffsetGameMinutes)}, identical to the
+	 * payload of the live {@code CARGO_LOADED} / {@code CARGO_UNLOADED}
+	 * SSE frames.
+	 */
+	public record CargoTransitRunDto(
+		String routeId,
+		long departureOffsetGameMinutes,
+		int totalCargoUnits
+	) {
+	}
+
+	/**
+	 * Phase-21 vehicle wire shape. Path is serialised as
+	 * {@code List<double[2]>} so the frontend can consume it as plain
+	 * {@code [lat, lon]} pairs. After the mode-unification deletion of
+	 * {@code Bus} the {@code kind} field is always {@code "ROBOT"}; the
+	 * {@code tripId} / {@code routeId} legacy bus-attribution fields
+	 * have been dropped — transit attribution now lives on the
+	 * {@code CARGO_LOADED} SSE frame instead.
 	 */
 	public record VehicleDto(
 		UUID id,
@@ -456,23 +617,15 @@ public class GameController {
 		long arrivesAtGameMinutes,
 		double metersPerGameMinute,
 		@Nullable UUID orderId,
-		@Nullable Long spoilageDeadlineGameMinutes,
-		@Nullable String tripId,
-		@Nullable String routeId
+		@Nullable Long spoilageDeadlineGameMinutes
 	) {
 		public static VehicleDto from(Vehicle vehicle) {
 			List<double[]> path = vehicle.path().stream()
 				.map(point -> new double[]{point.lat(), point.lon()})
 				.toList();
-			String tripId = null;
-			String routeId = null;
-			if (vehicle instanceof com.dimsumdetours.sim.model.vehicle.Bus bus) {
-				tripId = bus.tripId();
-				routeId = bus.routeId();
-			}
 			return new VehicleDto(
 				vehicle.id(),
-				vehicle.kind().name(),
+				"ROBOT",
 				vehicle.sourceBuildingId(),
 				vehicle.destinationBuildingId(),
 				vehicle.cargo(),
@@ -482,9 +635,7 @@ public class GameController {
 				vehicle.arrivesAtGameMinutes(),
 				vehicle.metersPerGameMinute(),
 				vehicle.orderId(),
-				vehicle.spoilageDeadlineGameMinutes(),
-				tripId,
-				routeId);
+				vehicle.spoilageDeadlineGameMinutes());
 		}
 
 		public static VehicleDto from(Robot robot) {

@@ -21,8 +21,20 @@ export const GAME_CONSTANTS = Object.freeze({
 		tileAttribution: `&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>`,
 		lightTiles: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
 		darkTiles: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-		/** Fallback bounding box used until a GTFS feed is loaded (Seattle). */
-		fallbackCenter: {lat: 47.608013, lng: -122.335167},
+		/**
+		 * Initial map centre while we wait for the active GTFS feed's bbox to land.
+		 * Project home turf — Hong Kong (Tsim Sha Tsui). Per the project rule this is
+		 * the ONLY place a real-world location is hardcoded; everything downstream
+		 * derives its viewport from the loaded feed.
+		 */
+		fallbackCenter: {lat: 22.302, lng: 114.177},
+		/**
+		 * Phase-18: zoom-level at and above which the transit overlay (stops +
+		 * ambient buses) renders. Below this the markers turn into noise and a
+		 * city-scale feed (1k+ stops) hurts FPS. Mirrors backend
+		 * {@code GameConstants.MIN_TRANSIT_RENDER_ZOOM}.
+		 */
+		minTransitRenderZoom: 12,
 		/** Per-category Leaflet path styling for the placement-zone overlays. */
 		layerStyles: Object.freeze({
 			park: Object.freeze({color: "#3fa34d", weight: 1, fillColor: "#3fa34d", fillOpacity: 0.35}),

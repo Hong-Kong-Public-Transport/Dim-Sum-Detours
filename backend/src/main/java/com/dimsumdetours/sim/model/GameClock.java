@@ -59,6 +59,41 @@ public final class GameClock {
 		return (int) (gameMinutes % (60L * 24L));
 	}
 
+	/** Game-day index since the start of the game (0-based, monotonic). Used by
+	 *  daily-upkeep / spoilage / order-deadline math that operates in days. */
+	public long getGameDay() {
+		return gameMinutes / (60L * 24L);
+	}
+
+	/** Game-week index since the start of the game (0-based, monotonic). One
+	 *  game-week is 7 game-days. Surfaced for week-grain UI and analytics. */
+	public long getGameWeek() {
+		return getGameDay() / 7L;
+	}
+
+	/** Game-month index since the start of the game (0-based, monotonic). One
+	 *  game-month is fixed at {@link #DAYS_PER_GAME_MONTH} game-days — chosen
+	 *  for player-comprehensibility rather than calendrical accuracy.
+	 *  Future phases that need month boundaries (factory upgrade timers,
+	 *  monthly milestones) read this. */
+	public long getGameMonth() {
+		return getGameDay() / DAYS_PER_GAME_MONTH;
+	}
+
+	/** Game-year index since the start of the game (0-based, monotonic). One
+	 *  game-year is {@link #MONTHS_PER_GAME_YEAR} game-months = 360 game-days
+	 *  (12 × 30). Tidy multiples that gameplay code can reason about without
+	 *  per-month bookkeeping. */
+	public long getGameYear() {
+		return getGameMonth() / MONTHS_PER_GAME_YEAR;
+	}
+
+	/** 30 game-days per game-month. Tidy enough for in-game calendars without
+	 *  the irregular real-world month-length lookup table. */
+	public static final long DAYS_PER_GAME_MONTH = 30L;
+	/** 12 game-months per game-year. */
+	public static final long MONTHS_PER_GAME_YEAR = 12L;
+
 	/** Reset clock to t=0, 1× speed, paused (matches a fresh-tab boot). */
 	public void reset() {
 		this.gameMinutes = 0L;

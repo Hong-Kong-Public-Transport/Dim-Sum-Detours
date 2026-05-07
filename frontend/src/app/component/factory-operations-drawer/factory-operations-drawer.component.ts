@@ -8,6 +8,7 @@ import {localize} from "../../core/i18n/localize";
 import {Building} from "../../core/model/building.model";
 import {Ingredient} from "../../core/model/ingredient.model";
 import {Operation, Recipe} from "../../core/model/recipe.model";
+import {ClockService} from "../../core/service/clock.service";
 import {LanguageService} from "../../core/service/language.service";
 import {RecipeTileComponent} from "../recipe-tile/recipe-tile.component";
 
@@ -52,6 +53,7 @@ interface FactoryView {
 })
 export class FactoryOperationsDrawerComponent {
 	private readonly languageService = inject(LanguageService);
+	private readonly clockService = inject(ClockService);
 
 	readonly factory = input<Building | null>(null);
 	readonly recipes = input.required<readonly Recipe[]>();
@@ -93,6 +95,21 @@ export class FactoryOperationsDrawerComponent {
 			};
 		});
 		const stalled = inputs.length > 0 && inputs.every((entry) => entry.have < entry.need);
+		// Phase-17: lerp the produced-units counter forward between authoritative
+		// snapshots. The server only refreshes building DTOs every ~10 game-minutes,
+		// but the cycle anchor + duration are enough for the client to predict how
+		// many cycles have completed since the last anchor — when stalled the server
+		// re-anchors `cycleStartedAtGameMinutes` to "now", so this expression naturally
+		// stays at zero. Snapshot will reconcile on the next refresh.
+		const liveMinutes = this.clockService.liveGameMinutesSignal();
+		const baseProduced = factory.producedUnits ?? 0;
+		const cycleStart = factory.cycleStartedAtGameMinutes ?? -1;
+		const cycleDuration = factory.cycleDurationGameMinutes ?? 0;
+		let livedProduced = baseProduced;
+		if (!stalled && cycleStart >= 0 && cycleDuration > 0 && liveMinutes > cycleStart) {
+			const extraCycles = Math.max(0, Math.floor((liveMinutes - cycleStart) / cycleDuration));
+			livedProduced = baseProduced + extraCycles;
+		}
 		return {
 			recipe,
 			operations: operationIds.map((operationId, index) => {
@@ -103,7 +120,7 @@ export class FactoryOperationsDrawerComponent {
 					name: operation ? localize(operation.displayName, language) : operationId,
 				};
 			}),
-			producedUnits: factory.producedUnits ?? 0,
+			producedUnits: livedProduced,
 			refrigerated: factory.refrigerated === true,
 			inputs,
 			stalled,

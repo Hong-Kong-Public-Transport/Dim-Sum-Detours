@@ -240,15 +240,14 @@ public final class GameConstants {
 	 */
 	public static final double MAX_ROBOT_LEG_METERS = 5_000.0;
 
-	/**
-	 * Phase-16: maximum great-circle distance from a building to a candidate GTFS
-	 * boarding/alighting stop. Beyond this the planner refuses the stop — the player
-	 * would have to walk too far before catching the bus, which (a) doesn't match
-	 * the "robots scoot to the corner" framing and (b) blows the per-leg robot cap.
-	 * Tuned to the same scale as {@link #MAX_ROBOT_LEG_METERS} so a single robot
-	 * leg comfortably covers the walk to/from the stop.
-	 */
-	public static final double MAX_TRANSIT_STOP_WALK_METERS = 1_500.0;
+	// Phase-21: the previous {@code MAX_TRANSIT_STOP_WALK_METERS = 1500} cap on
+	// the source→boardingStop / alightingStop→destination "last-mile" robot legs
+	// has been replaced by the unified {@link #MAX_ROBOT_LEG_METERS} cap — every
+	// robot leg in the simulation now obeys the same 5 km rule, including the two
+	// last-mile legs of a robot→bus→robot chain. If neither last-mile leg can be
+	// kept under that cap, the planner returns no chain and the dispatcher falls
+	// back to a direct robot (when source-to-destination is itself ≤ 5 km), or
+	// reports "no path" otherwise.
 
 	/**
 	 * Phase-16: scheduled-speed approximation for GTFS bus legs when the planner is
@@ -283,4 +282,26 @@ public final class GameConstants {
 	 * so the drawer's progress bar can show the loading vs. travel split.
 	 */
 	public static final long ROBOT_LOADING_GAME_MINUTES = 5L;
+
+	// ─────────────────────────────────────────────────────────────────────────────
+	// Phase 18: ambient transit
+	// ─────────────────────────────────────────────────────────────────────────────
+	/**
+	 * Phase-18: every transit route runs a vehicle at this constant in-game cadence,
+	 * regardless of the published GTFS schedule. We keep the GTFS feed for spatial
+	 * data (stop locations, route shapes, ordered stop sequences) but ignore its
+	 * timetable — real-world schedules thin out overnight and surge at peak which
+	 * makes for inscrutable "no buses available" gaps in a game. A flat 5-minute
+	 * headway keeps transit always-eventually-available regardless of in-game
+	 * time-of-day.
+	 */
+	public static final long BUS_HEADWAY_GAME_MINUTES = 5L;
+
+	/**
+	 * Phase-18: zoom-level at and above which the frontend renders ambient transit
+	 * (stops + buses sliding along their routes). At lower zooms the markers turn
+	 * into visual noise and a busy feed (1k+ stops) hurts FPS. Mirrored on the
+	 * frontend in {@code GAME_CONSTANTS.map.minTransitRenderZoom}.
+	 */
+	public static final int MIN_TRANSIT_RENDER_ZOOM = 12;
 }

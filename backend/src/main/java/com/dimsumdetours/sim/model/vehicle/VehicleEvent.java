@@ -28,7 +28,8 @@ import java.util.UUID;
 )
 @JsonSubTypes({
 	@JsonSubTypes.Type(value = VehicleEvent.Spawned.class, name = "SPAWNED"),
-	@JsonSubTypes.Type(value = VehicleEvent.Arrived.class, name = "ARRIVED")
+	@JsonSubTypes.Type(value = VehicleEvent.Arrived.class, name = "ARRIVED"),
+	@JsonSubTypes.Type(value = VehicleEvent.RobotArrivedAtStop.class, name = "ROBOT_ARRIVED_AT_STOP")
 })
 public sealed interface VehicleEvent {
 
@@ -38,11 +39,13 @@ public sealed interface VehicleEvent {
 	long gameMinutes();
 
 	/**
-	 * A vehicle just dispatched. The full {@link Vehicle} is sent (sealed type, so the
-	 * wire payload carries a {@code "kind"} discriminator) and the frontend computes
-	 * positions purely from {@code spawnedAt + path + speed}. {@link Robot} legs and
-	 * {@link Bus} legs share this event so a planner-built chain surfaces every leg
-	 * change as a normal SPAWNED + ARRIVED pair.
+	 * A vehicle just dispatched. The full {@link Vehicle} is sent
+	 * (Jackson {@code "kind"} discriminator stays for forward
+	 * compatibility) and the frontend computes positions purely from
+	 * {@code spawnedAt + path + speed}. Phase-21: the only concrete
+	 * kind is {@link Robot} now that {@code Bus} has been removed —
+	 * transit cargo flows through {@code CARGO_LOADED} /
+	 * {@code CARGO_UNLOADED} events on a separate channel.
 	 */
 	record Spawned(Vehicle vehicle, long gameMinutes) implements VehicleEvent {
 		@Override
@@ -66,6 +69,29 @@ public sealed interface VehicleEvent {
 		@Override
 		public String type() {
 			return "ARRIVED";
+		}
+	}
+
+	/**
+	 * Phase-21: a first-mile robot reached its boarding stop and was
+	 * despawned (its cargo flipped into a {@code WaitingCargo} queue
+	 * keyed by {@code (boardingStopId, routeId)}). Distinct from
+	 * {@link Arrived} because no cargo is delivered to a destination —
+	 * the cargo is mid-route. Frontend uses this to remove the robot
+	 * sprite the moment the despawn happens, without having to infer
+	 * "robot vanished but had a transit boarding plan" from a generic
+	 * Arrived event. No emitter wired yet — the boarding state machine
+	 * publishes onto this channel.
+	 */
+	record RobotArrivedAtStop(
+		UUID vehicleId,
+		String boardingStopId,
+		String routeId,
+		long gameMinutes
+	) implements VehicleEvent {
+		@Override
+		public String type() {
+			return "ROBOT_ARRIVED_AT_STOP";
 		}
 	}
 }

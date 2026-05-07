@@ -5,6 +5,274 @@
 > built. Most readers want the README — this is for contributors and curious
 > archaeologists.
 
+## Active backlog
+
+Single source of truth for everything still deferred. When a feature
+ships, move its bullet down into the matching phase section below and
+delete it from this list. Older "Still deferred" / "Future work" notes
+in `docs/DISPATCH.md`, `docs/NETWORKING.md`, and historic phase
+sections all redirect here.
+
+### Cargo dispatch / vehicles (Phase 21 — full backend redesign)
+
+✅ **Landed.** Replaced the recursive `VehicleHandoff` chain with
+explicit domain types (`RoutePlan`, `CargoManifest`, `WaitingCargo`,
+`TransitVehicle`, `TransitBoarding`, `CargoEvent`, `TransitRunId`)
+and a three-step boarding state machine in
+`GameState.advanceVehicles`. Originally sequenced as one atomic PR
+because the sealed-type fanout would not compile in a partial state;
+the actual landing followed an "add alongside → switch → delete"
+plan that kept the build green between every sub-step. The eight
+historical sub-steps are preserved in the git log of this file.
+
+* **Steps 1–4 — un-seal `Vehicle`, plumb `lastTickGameMinutes`,
+  add `WaitingCargo`/`TransitVehicle` collections, expose the
+  `waitingCargo` snapshot field on `GET /api/game/snapshot`**: ✅
+  landed. `Vehicle` is now a plain (un-`sealed`) interface with
+  `Robot` the sole declared subtype on the wire (cargo buses are
+  server-only). `SimulationEngine.tick()` captures
+  `before.gameMinutes()` and forwards it to
+  `GameState.advanceVehicles(long)`. Two private maps —
+  `Object2ObjectMap<WaitingCargoKey, ObjectList<WaitingCargo>>
+  waitingCargo` and `Object2ObjectMap<TransitRunId, TransitVehicle>
+  transitVehicles` — hold queued shipments and live cargo-carrying
+  runs; both are cleared in `reset()`. `GET /api/game/snapshot.waitingCargo`
+  surfaces the queued shipments for cold-boot.
+* **Step 5 — transit-planning logic moved into `RoutePlanner`**:
+  ✅ landed. `engine/routing/RoutePlanner.java` (`@Service`) is the
+  single planning entry-point; it returns a sealed `RoutePlan`
+  (`Transit` / `DirectRobot` / `NoPath`) — never `Optional`. The
+  legacy `GtfsMultiLegPlanner` / `MultiLegPlanner` / `VehicleChain`
+  scaffolding has been deleted. `RoutePlanner.plan(...)` is
+  headway-agnostic; boarding alignment happens inside the boarding
+  scan, not the planner.
+* **Step 6 — boarding state machine + `Robot.boarding` field**:
+  ✅ landed. `Robot` carries an optional `TransitBoarding`;
+  `GameState.spawnTransitFirstLeg(...)` constructs the first-mile
+  robot and `GameState.spawnRobotWithPath(...)` covers the
+  `RoutePlan.DirectRobot` branch. `VehicleDispatcher.dispatchShipment`
+  pattern-matches `RoutePlan` → spawn helper. The body of
+  `advanceVehicles` is the canonical three-scan implementation:
+  arrivals (first-mile robot → `WaitingCargo` queue +
+  `RobotArrivedAtStop`), boarding (`findRunCrossingStop` →
+  `RUN_STARTED` + per-manifest `CARGO_LOADED`), alighting
+  (`arrivalAtStop` → per-manifest `CARGO_UNLOADED` + connecting
+  robot spawn + `RUN_FINISHED` when last manifest leaves).
+* **Step 7 — mass deletion** (~1100 LOC removed): ✅ landed.
+  `Bus.java`, `VehicleHandoff.java`, `VehicleKind.java`,
+  `MultiLegPlanner.java`, `VehicleChain.java`,
+  `GtfsMultiLegPlanner.java`, plus the `handoff` field + `kind()`
+  method from `Robot` / `Vehicle`, plus `kind` / `tripId` /
+  `routeId` from `GameController.VehicleDto` — all gone.
+* **Step 8 — frontend cleanup**: ✅ landed. Stripped
+  `VehicleKind` / `kind` / `tripId` / `routeId` from
+  `vehicle.model.ts` + `vehicle.service.ts`. Added a
+  `ROBOT_ARRIVED_AT_STOP` variant to the `VehicleEvent` union and
+  a matching handler in `VehicleService.applyEvent`; deleted
+  `paintBus`, the `kind === "BUS"` early-continue, and the `kind`
+  parameter from `robot-pixi-layer.ts`. The `RenderTexture`
+  migration for hardware-batched sprites stays deferred — see
+  Performance / polish.
+
+#### Phase 21 close-out (post-landing fixes)
+
+* **`RobotArrivedAtStop` despawn frame fan-out** ✅ fixed.
+  `GameState.advanceVehicles` builds the despawn event in
+  `ArrivalBatch.miscEvents()`, but `SimulationEngine.tick()` only
+  iterated `vehicleEvents` / `spawnEvents` / `orderEvents` /
+  `cargoEvents` — the misc list was dropped on the floor. The
+  symptom was a first-mile robot that lingered at its boarding
+  stop forever even though the cargo had successfully flipped
+  into the `WaitingCargo` queue and the connecting robot at the
+  alighting stop had spawned and walked to the destination. Fix:
+  added the missing `for (VehicleEvent miscEvent :
+  arrivals.miscEvents()) vehicleSink.tryEmitNext(miscEvent);`
+  loop. Regression covered by
+  `GameStateCargoEventsTest.firstMileRobotArrival_emitsRobotArrivedAtStopOnMiscChannel`.
+* **Per-manifest unload totals** ✅ fixed. The alighting scan in
+  `GameState.advanceVehicles` previously emitted every
+  `CargoEvent.CargoUnloaded` for a multi-manifest alight with the
+  same post-all-removal `totalCargoUnits` value, so the
+  frontend's bus sprite jumped straight to its final scale
+  instead of shrinking step-by-step. Fix: track a per-step
+  `runningTotal` and decrement by the alighting manifest's unit
+  count before emitting each frame. Regression covered by an
+  added assertion in `multiManifestRun_emitsRunFinishedOnlyAfterLastUnload`.
+* **Boarding window same-tick race** ✅ fixed. The boarding scan
+  asked `TransitSchedule.findRunCrossingStop(routeId, stopId,
+  lastTick, now)` and matched the first hit, even when the run's
+  departure offset preceded the moment the first-mile robot
+  physically arrived at the stop. Cargo could "board" a bus that
+  had already departed within the same tick. Fix: skip the run
+  when its `departureOffsetGameMinutes` is strictly less than the
+  earliest `WaitingCargo.arrivedAtGameMinutes()` in the queue.
+* **Dispatcher `NoPath` log throttle race** ✅ fixed. The
+  previous `merge` + side-effecting boolean array + re-read of
+  `noPathLastLogWallMs.get(key)` could double-log under
+  concurrency. Replaced with a single
+  `ConcurrentHashMap.compute(...)` returning the resolved
+  timestamp; the "did we cross the throttle window?" decision
+  rides reference equality of the returned value. The
+  `multiLegPlanEmpty` counter (referenced by the periodic summary
+  log but never incremented) is now bumped on every `NoPath`
+  outcome.
+
+### Networking (Phase 19 follow-ups)
+
+* **Phase E — `gameMinutes` → `gameTimeMs` rename.** Mechanical bump
+  from whole-minute to millisecond resolution across every backend
+  record + frontend mirror. Single PR with no mixed-unit window
+  because mixing the two would cause silent factor-of-60 000 bugs.
+  Adds `getYear() / getMonth() / getWeek()` derivations.
+* **Phase H — persistent server-side event log.** So a long-disconnect
+  client can replay between two `gameMinutes` values rather than
+  cold-booting. Only worth doing once cold-boot becomes expensive —
+  state currently fits in a single sub-megabyte JSON, so the snapshot
+  path is fine.
+
+### Content / playtest
+
+* **Cantonese / dim-sum recipe content rewrite.** ✅ landed.
+  Deleted the placeholder garlic chain (`garlic`, `garlic_powder`,
+  `garlic_salt`, `garlic_rice`, `dehydrated_garlic` ingredients;
+  `grow_garlic` / `garlic_powder` / `garlic_salt` / `garlic_rice` /
+  `dehydrated_garlic` recipes; `garlic_noodle_bar` restaurant; orphan
+  `dehydrate` / `powderize` operations). Added authentic Cantonese
+  raw ingredients (`pork`, `shrimp`, `flour` with en + zh names) and
+  three farm-harvest recipes (`raise_pork`, `catch_shrimp`,
+  `mill_flour`). Re-pointed `cha_siu_bao` (pork + flour + soy_sauce →
+  mix + steam), `siu_mai` (pork + flour + chili_oil → mix + steam)
+  and `har_gow` (shrimp + flour + white_pepper → mix + steam) onto
+  the new tree so the dim-sum dishes use realistic inputs instead of
+  cooked rice. Existing `rice` / `cooked_rice` content kept as
+  orphan-but-valid content for a future congee tier.
+* **Train subtype** — superseded by Phase 20 mode unification (the
+  engine no longer branches on transit mode; only the icon changes via
+  `route_type`). Listed here only so historic mentions in earlier
+  phase notes resolve. **Closed, no action needed.**
+
+### Performance / polish
+
+* **Pixi `RenderTexture` migration** for ambient transit + robot
+  sprites. Currently `Graphics.clear()` + redraw per frame; switch to
+  a shared `RenderTexture` per glyph variant + `Sprite` instances for
+  hardware batching. Folded into the Phase-21 frontend changes above.
+
+---
+
+## Phase 20 - Cargo dispatch hardening (sparse GTFS, mode unification)
+Tightens the dispatch / pathfinding / boarding pipeline against
+real-world GTFS feeds and decouples the icon from the behaviour. Full
+spec: [`docs/DISPATCH.md`](./DISPATCH.md).
+Shipped in this phase:
+* **Sparse-feed stop-time interpolation.** Both
+  `TransitSnapshotService.buildSnapshot` and
+  `GtfsMultiLegPlanner.tryBuildChain` now derive missing per-stop game-
+  minutes by piecewise-linear interpolation against cumulative shape
+  distance, anchored on whichever stops the feed *did* schedule. A trip
+  with no anchored stops at all synthesises times from `cumulative
+  meters / BUS_METERS_PER_GAME_MINUTE`. The pre-Phase-20 strict-GTFS
+  rejection (which silently dropped sparse-feed (boarding, alighting)
+  pairs and kept dispatchers in a "no-path" loop forever) is gone.
+* **Mode-agnostic transit rendering.** `TransitOverlayLayer.makeBusGlyph`
+  switches on `route.type` to pick a glyph (tram, metro/rail,
+  ferry, cable car, bus, …); behaviour is identical across every mode.
+  No backend code branches on transit mode any more.
+* **Boarding overshoot fix.** `GameState.buildNextLeg` BUS branch now
+  clamps `spawnedAt = min(now, committedDepartsAt)` so the
+  `spawnedAt ≤ departsAt < arrivesAt` invariant holds when a sim tick
+  overshoots the planned boarding minute (which always happens at
+  ≥ 64× game speed — one tick at 256× advances ~25 game-min, well past
+  the 5-min headway).
+* **Cargo bus rendering consolidation.** `RobotPixiLayer` early-returns
+  on `vehicle.kind === "BUS"`. The single ambient sprite that
+  `TransitOverlayLayer` draws is the canonical cargo-bus rendering — it
+  grows when carrying cargo, brightens slightly, shrinks back as cargo
+  unloads. Multiple manifests can ride the same run.
+
+Deferred Phase-21 follow-ups (full backend redesign with explicit
+`RoutePlan` / `CargoManifest` / `WaitingCargo` / `TransitVehicle`
+types) are tracked in the **Active backlog** at the top of this file.
+
+## Phase 19 - Networking architecture revision (anchor-and-extrapolate)
+Reshape the wire so the client extrapolates state from server-anchored
+timestamps + self-contained event payloads. Eliminates post-arrival
+polling, makes every event idempotent + reorder-tolerant, and gives every
+SSE channel a `worldEpoch` so reset detection is automatic. Full spec:
+[`docs/NETWORKING.md`](./NETWORKING.md).
+Shipped in this phase:
+* **Phase A - `ClockSnapshot` envelope.** Added `serverWallClockMs`,
+  `pausedSinceGameMinutes`, `worldEpoch` to every clock frame. Frontend
+  `ClockService.liveGameMinutes()` now extrapolates with
+  `(Date.now() - serverWallClockMs)` so fixed network latency cancels in
+  the math. When paused, the client clamps to `pausedSinceGameMinutes` so
+  a subscriber that joins during a paused state renders the right value.
+* **Phase F - `worldEpoch` + cold-boot snapshot.** New `GET
+  /api/game/snapshot` returns the full envelope (clock, balance,
+  buildings, vehicles, orders, milestones) for app cold-boot and
+  disconnect-recovery. `POST /api/game/reset` now bumps `worldEpoch` and
+  returns the same envelope (was 204). Any client whose cached epoch
+  differs from a received frame's epoch wipes caches and re-fetches.
+* **Phase B - push instead of poll.** New `/api/game/events/stream` SSE
+  carries `BalanceChanged` / `BuildingStateChanged` / `RestaurantClosed`
+  / `WorldReset`. `SimulationEngine.tick` diff-emits these events by
+  comparing the post-tick state against per-building DTO snapshots - no
+  manual publisher calls scattered through `GameState`. Frontend
+  `VehicleService` no longer fires its post-arrival
+  `refreshBuildings` / `refreshBalance` HTTP fan-out (the events stream
+  delivers the same state changes within the same tick), and
+  `MapComponent`'s 2-second `/api/game/buildings` polling effect was
+  removed.
+* **Phase C - cargo `Spawned` self-contained.** Verified
+  `VehicleService.interpolatePosition` already reads only `path`,
+  `departsAtGameMinutes`, `arrivesAtGameMinutes` from the event payload;
+  no per-tick ""moved"" event ever fires. Documented as the
+  ""event-anchored trajectory"" branch of the unified extrapolation model.
+* **Phase D - ambient transit fully client-side.** Phase-18 already
+  shipped this; documented now as the ""schedule-deterministic from t=0""
+  branch (position is pure
+  `liveGameMinutes() mod BUS_HEADWAY_GAME_MINUTES` over a static
+  polyline).
+* **Cargo bus follows GTFS shape + waits for headway.** Two follow-on
+  fixes after the dispatcher started actually picking buses: (1) the
+  cargo bus's path is now sliced from the trip's `shapes.txt` polyline
+  (with nearest-shape-point endpoint snap, falling back to the trip's
+  ordered intermediate stop coordinates) between the boarding and
+  alighting stops — previously it was a single straight line, which
+  contradicted the ambient bus markers on the same route; (2)
+  `GameState.buildNextLeg` now aligns the bus's `departsAt` to the next
+  `BUS_HEADWAY_GAME_MINUTES = 5` boundary, so a robot that arrives at a
+  boarding stop visibly idles there until the next 5-minute headway tick
+  instead of teleporting the bus into motion. The bus's
+  duration is recomputed from the shape-following distance so the
+  dispatcher's "multi-leg vs direct robot" comparison stays honest.
+Deferred Phase 19 follow-ups (Phase E `gameMinutes → gameTimeMs`
+rename, Phase H persistent event log) are tracked in the **Active
+backlog** at the top of this file. Phase G (single SSE channel)
+shipped in this phase.
+### Architectural invariants codified by this phase
+1. **Every server -> client message is a self-contained anchor + payload.**
+   `(serverWallClockMs, gameMinutes, paused, speed, pausedSinceGameMinutes,
+   worldEpoch)` plus event-specific fields.
+2. **Reconcile by absolute time + epoch, never by relative ordering.**
+   A reordered/duplicated/missed event reconciles cleanly; SSE auto-reconnect
+   needs no replay buffer.
+3. **No state polling.** Cargo arrivals, stockpile changes, balance
+   mutations all push as events. The pre-Phase-19 post-arrival
+   `refreshBuildings` / `refreshBalance` fan-out is gone.
+4. **Cold-boot via one endpoint.** `/api/game/snapshot` returns every
+   cache-able piece of state. Used on first load and on
+   `worldEpoch` mismatch.
+5. **Reset is a regular event.** `WorldReset` ships on the events stream
+   with the new epoch; the post-reset snapshot is the REST response.
+6. **Phase G shipped alongside A–F.** All five live SSE channels are
+   multiplexed onto a single `GET /api/game/stream` keyed by event-type
+   discriminator (`CLOCK | VEHICLE | ORDER | MILESTONE | GAME`); the
+   frontend `ServerEventBusService` opens one `EventSource` and fans the
+   payloads out onto per-domain RxJS subjects. The legacy per-channel
+   endpoints stay for backward compatibility, debug ergonomics, and
+   integration tests.
+
 ## Phase 1 Roadmap
 
 | Week | Goal                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Status |
@@ -21,11 +289,13 @@
 | 10   | Real factory inputs: stockpile-gated production, farm→factory restock walkers, supplyable filter respects placed producers, reputation drift fix.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |   ✅    |
 | 11   | Honest reset of over-promised Week-10 carry-over: drop the factory starter unit, pin stalled cycle anchors, ground-truth the production tests. Walker entity model + street-network pathfinding deferred to Week 12.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |   ✅    |
 | 12   | Walker → Robot architectural cleanup: server owns vehicle entities (sealed `Vehicle` / `Robot`, atomic spawn debits source, atomic arrival credits destination), SSE-driven frontend renderer, casual-biking ≈ 10 km/h speed, reset clears in-flight robots. PixiJS marker layer, click-on-robot drawer, stalled-factory greyscale also landed. OSM street pathfinding still deferred.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |   ✅    |
-| 13   | Honest cleanup pass: deleted the unused `/buildings/{id}/consume-unit` and `/buildings/{id}/receive-input` endpoints (and their frontend wrappers) — they were superseded by the Week-12 server-side dispatcher. Fixed the silent "no orders ever appear" bug by pre-filtering eligible restaurants on supplyable accepted recipes, so a random pick can no longer land on a restaurant with an unbuilt chain and skip the entire tick. Added a lifetime fulfilled-order counter to `Restaurant`, surfaced in the info drawer (en + zh). **Still genuinely deferred:** OSM street pathfinding, `Bus` / `Train` vehicle subtypes, and the Cantonese / dim-sum recipe content rewrite.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |   ✅    |
-| 13   | Honest cleanup pass: deleted the unused `/buildings/{id}/consume-unit` and `/buildings/{id}/receive-input` endpoints (and their frontend wrappers) — they were superseded by the Week-12 server-side dispatcher. Fixed the silent "no orders ever appear" bug by pre-filtering eligible restaurants on supplyable accepted recipes, so a random pick can no longer land on a restaurant with an unbuilt chain and skip the entire tick. Added a lifetime fulfilled-order counter to `Restaurant`, surfaced in the info drawer (en + zh). **Still genuinely deferred:** OSM street pathfinding, `Bus` / `Train` vehicle subtypes, and the Cantonese / dim-sum recipe content rewrite.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |   ✅    |
+| 13   | Honest cleanup pass: deleted the unused `/buildings/{id}/consume-unit` and `/buildings/{id}/receive-input` endpoints (and their frontend wrappers) — they were superseded by the Week-12 server-side dispatcher. Fixed the silent "no orders ever appear" bug by pre-filtering eligible restaurants on supplyable accepted recipes, so a random pick can no longer land on a restaurant with an unbuilt chain and skip the entire tick. Added a lifetime fulfilled-order counter to `Restaurant`, surfaced in the info drawer (en + zh). **Still genuinely deferred:** OSM street pathfinding, `Bus` / `Train` vehicle subtypes, and the Cantonese / dim-sum recipe content rewrite.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |   ✅    |
 | 14   | Performance audit + OSM pathfinding. Recipe-graph derivatives in `VehicleDispatcher` and `OrderGenerator` cached once on first dispatch instead of rebuilt every tick; `GameState.advanceProduction` / `advanceVehicles` reuse buffer fields rather than allocating per-tick `toArray(new Building[0])`; `activeRestockKeys` migrated from JDK `HashSet` to fastutil `ObjectOpenHashSet`; milestone evaluator gated on game-minute change. New `RouteProvider` SPI in framework-agnostic `sim/` plus a Spring-wired `OsmRouter` (A\* over a CSR street graph fetched from Overpass `way[`"`highway`"`]` and disk-cached); robots now follow real street polylines with graceful straight-line fallback when the graph isn't loaded yet or endpoints sit further than `OSM_MAX_SNAP_METERS` from any way. **Still genuinely deferred:** GTFS multi-leg vehicles (`Bus` / `Train` subtypes that robots board to ride between stops with cargo transfer in/out) and the Cantonese / dim-sum recipe content rewrite.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |   ✅    |
 | 15   | Doc split + Hong Kong default + 5 km robot leg cap + arrival-event network throttle. Roadmap moved out of README into `docs/ROADMAP.md` so README only describes the game itself. Default world bbox switched from Bellingham to Hong Kong (the project's namesake). Frontend `VehicleService` now coalesces all post-arrival `refreshBuildings` / `refreshBalance` HTTP fan-out within a 1-second wall-clock window so 256× speed (where dozens of arrivals can land per real second) no longer spams the network panel. New `MAX_ROBOT_LEG_METERS = 5 km` constant: a single robot leg is now refused beyond 5 km straight-line, the dispatcher pre-filters producers further than that out of `nearestMatching`, and the OSM router skips A\* entirely both for short hops (< 150 m) and for trips beyond the cap. **Still genuinely deferred:** GTFS multi-leg vehicles (the explicit next-turn focus — Bus record + sealed permits update + MultiLegPlanner + dispatcher integration), and the Cantonese / dim-sum recipe content rewrite.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |   ✅    |
 | 16   | GTFS multi-leg vehicles. Sealed `Vehicle permits Robot, Bus`; `Bus` record carries GTFS `tripId` / `routeId` and a path-length-divided-by-scheduled-duration speed so the marker matches the published timetable. New `VehicleHandoff` linked-list lets each vehicle declare "spawn this next leg on arrival"; `GameState.advanceVehicles` walks the chain robot → bus → robot, propagating cargo + spoilage deadline verbatim and only applying cargo to the destination on the terminal leg. New `MultiLegPlanner` SPI in `sim/state/` + Spring-wired `GtfsMultiLegPlanner` that picks nearest boarding/alighting stops within `MAX_TRANSIT_STOP_WALK_METERS = 1.5 km`, finds a connecting trip in the loaded feed (first feed in `data/gtfs/` alphabetically, eager-loaded at boot), and reads `stop_times.txt` for the bus duration with `BUS_METERS_PER_GAME_MINUTE` fallback. `VehicleDispatcher` now runs a short-leg pass first, then a long-haul pass that consults the planner for every order / restock whose nearest producer sits beyond the 5 km robot cap. WebClient buffer raised to 1 GiB so Hong Kong's full Overpass `way["highway"]` response (≥ 96 MB) parses without `DataBufferLimitException`. SSE `Spawned` event now carries `vehicle` (was `robot`) so bus legs surface through the same channel; frontend `VehicleKind` widened to `"ROBOT" \| "BUS"`. Pixi marker layer paints a yellow bus glyph (windows + wheels) for `BUS` vehicles, and the in-flight drawer attributes the GTFS route id ("Route: KMB 5A") plus the trip id with both `en` and `zh` strings. Robot routing on Hong Kong was straight-lining because (a) Country-Park placement zones routinely sit > 250 m from the nearest highway and (b) the 450 k-node HK graph made the linear-scan `nearestNode` O(n) prohibitive — fixed by raising `OSM_MAX_SNAP_METERS` to 1 km and replacing the linear scan with a uniform-grid spatial index (3×3 bucket window, ~1 km buckets); router now logs an A*-vs-fallback summary every 100 completions so future regressions are visible. **Still genuinely deferred:** train subtype, and the Cantonese / dim-sum recipe content rewrite. |   ✅    |
+| 17   | Loading-window robots, batch-of-5 dispatch, hard no-straight-line pathfinding, end-to-end client-side lerping, and a working multi-leg dispatcher. `Robot`/`Bus` gained `departsAtGameMinutes` separating "spawned" from "started moving"; `Vehicle.metersPerGameMinute` now derives from the depart→arrive window so the loading window doesn't slow markers. New `ROBOT_CARGO_BATCH_SIZE = 5` + `ROBOT_LOADING_GAME_MINUTES = 5` constants — producers must have ≥ 5 stock before dispatch (`Farm.withProducedUnitsConsumed(int)` / `Factory.withProducedUnitsConsumed(int)` return `Optional.empty()` if the batch can't be debited atomically), and every spawn pins the marker stationary at `path[0]` for the loading window before interpolating. `OsmRouter.findPath` no longer falls back to straight line: graph-not-loaded, source/dest > `MAX_ROBOT_LEG_METERS`, snap > `OSM_MAX_SNAP_METERS`, and A*-expansion-cap-exceeded all return `null` and the dispatcher skips the spawn (producer keeps its stock for the next tick). `GtfsMultiLegPlanner` now routes both robot legs through `RouteProvider`, considers the top-5 nearest boarding/alighting stops (instead of only the single nearest), pre-indexes `stopId → trips` so `findConnectingTrip` skips trips that don't touch the boarding stop, and emits `[multi-leg/plan/<reason>]` INFO logs for the first 5 of each failure class (no-feed / no-boarding / no-alighting / no-trip / no-osm-route) plus a one-line summary on the first success. `VehicleDispatcher` collapsed its short-leg + long-haul order passes into a single distance-branching loop — the dispatcher now picks the GLOBAL nearest in-stock producer and routes through `spawnRobot` when ≤ 5 km or `spawnPlannedFirstLeg` (with planner-built chain) when > 5 km, so a far-away producer is correctly bridged by transit even when a closer producer is unavailable; restocks follow the same shape and emit a periodic `Dispatcher: N short-leg robots spawned, M multi-leg attempts → K chains spawned` summary every 50 decisions. `OSM_MAX_ASTAR_EXPANSIONS` raised 50 k → 200 k; OSM router's fallback log emits the first 5 of each reason at INFO and gates the periodic summary on TOTAL decisions so 100 %-fallback sessions still produce telemetry. `OsmRouter` now derives its bbox from the active GTFS feed (`GtfsLoader.computeBoundingBox` + 0.02° pad → `OsmHighwayLoader.loadGraphForBbox`) so the street graph and the placement zones share a footprint instead of (in the Bellingham WTA + Hong Kong default config case) sitting 10 000 km apart. Frontend `ClockService` exposes a `liveGameMinutesSignal` lerp-driven at ~6 Hz; the toolbar HH:MM, the farm/factory drawer `producedUnits` counters, the robot-drawer ETA + progress percent, and the restaurant-drawer order patience bars all read it through `computed()` so they advance smoothly between the 1 s SSE frames. The robot-drawer surfaces a "Loading cargo" / "In transit" status (en + zh) and the Pixi badge dims to 0.45 alpha while loading, full opacity once departed. **Still genuinely deferred:** train subtype (gated on a rail-bearing GTFS feed — the WTA bus-only feed wouldn't exercise the code), and the Cantonese / dim-sum recipe content rewrite. |   ✅    |
+| 18   | Ambient transit overlay + region-agnostic timetable. New `BUS_HEADWAY_GAME_MINUTES = 5` and `MIN_TRANSIT_RENDER_ZOOM = 12` constants; `GtfsMultiLegPlanner` now derives the cargo bus duration purely from `haversine / BUS_METERS_PER_GAME_MINUTE` instead of consulting the GTFS scheduled timetable, because real-world schedules thin out overnight and surge at peak which made transit availability inscrutable in-game — spatial GTFS data (stop locations, route shapes, ordered stop sequences) stays authoritative, the timetable is invented. New `TransitSnapshotService` builds a JSON-friendly snapshot of the active feed at boot — for each `(routeId, directionId)` it picks the trip with the most stop_times as the canonical variant, resolves a polyline from `shapes.txt` (falling back to the trip's ordered stop coordinates), and indexes `stopId → routeIds` so the frontend can show "which routes serve this stop". Exposed via `GET /api/transit/snapshot` (503 when no feed). New frontend `TransitService` fetches the snapshot once at boot. New `TransitOverlayLayer` renders all stops as Leaflet `circleMarker`s with a sticky tooltip showing each serving route + its first 5 downstream stops, and animates ambient buses as Pixi sprites sliding along each route's pre-computed cumulative-distance polyline — one bus per ceil(routeRunTime / headway) so the same headway concept produces a steady stream regardless of route length. The whole overlay LOD-gates on map zoom (`zoom ≥ 12`) — at country-scale zoom 1 k+ stops become noise and a perf cliff, so the layer adds/removes itself from the map on `zoomend`. Per the project rule "no hardcoded WTA / Bellingham / Seattle / Hong Kong references", the only remaining hardcode is the frontend `fallbackCenter` (now Hong Kong / Tsim Sha Tsui) — every downstream viewport, OSM bbox, and transit overlay derives from the loaded GTFS feed's geometry. **Still genuinely deferred:** train subtype (gated on a rail-bearing GTFS feed); Cantonese / dim-sum recipe content rewrite. |   ✅    |
+| 19   | Networking architecture revision (anchor-and-extrapolate). Every server → client message is now a self-contained envelope `(serverWallClockMs, gameMinutes, paused, speed, pausedSinceGameMinutes, worldEpoch)` plus an event-specific payload; the client extrapolates state forward from the most recent anchor and reconciles by absolute in-game time, never by relative ordering. Phase A added the new fields to every clock frame so `ClockService.liveGameMinutes()` cancels fixed network latency and clamps to `pausedSinceGameMinutes` while paused. Phase F added `GET /api/game/snapshot` (full cold-boot envelope: clock + balance + buildings + vehicles + orders + milestones) and made `POST /api/game/reset` bump `worldEpoch` and return the same envelope (was 204) so any client whose cached epoch differs wipes caches and re-fetches. Phase B replaced post-arrival HTTP polling with a new `/api/game/events/stream` SSE that diff-emits `BalanceChanged` / `BuildingStateChanged` / `RestaurantClosed` / `WorldReset` from `SimulationEngine.tick`; the frontend `VehicleService.refreshBuildings`/`refreshBalance` fan-out and `MapComponent`'s 2-second `/api/game/buildings` polling effect were both deleted. Phase C verified cargo `Spawned` is self-contained (position is a pure function of `path`, `departsAtGameMinutes`, `arrivesAtGameMinutes`) and Phase D documented ambient transit as the "schedule-deterministic from t = 0" branch of the same extrapolation model. Phase G shipped alongside: a single `GET /api/game/stream` SSE multiplexes `CLOCK | VEHICLE | ORDER | MILESTONE | GAME` frames behind a `type` discriminator, and the frontend `ServerEventBusService` opens one `EventSource` and fans payloads onto per-domain RxJS subjects — production clients use one connection where they used five, leaving comfortable headroom under the browser's 6-per-origin SSE cap. Legacy per-channel endpoints stay for backward compatibility, debug ergonomics, and integration tests. Full spec: [`docs/NETWORKING.md`](./NETWORKING.md). **Still deferred:** Phase E (`gameMinutes` → `gameTimeMs` rename — mechanical bump from whole-minute to millisecond resolution; scoped as a single PR with no mixed-unit window because mixing the two would cause silent factor-of-60 000 bugs); Phase H (persistent server-side event log so a long-disconnect client can replay rather than cold-boot — only valuable if cold-boot becomes expensive); train subtype; Cantonese / dim-sum recipe content rewrite. |   ✅    |
 
 **Don't build** trees, ingredient walking, modding UI, or visual polish until Week 6 proves the loop works.
 
